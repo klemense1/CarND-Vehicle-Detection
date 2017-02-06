@@ -1,7 +1,7 @@
-import cv2
-
-import pickle
 import os
+import time
+import pickle
+import cv2
 import numpy as np
 
 import matplotlib.image as mpimg
@@ -10,7 +10,8 @@ from sklearn.svm import LinearSVC
 from sklearn.preprocessing import StandardScaler
 from skimage.feature import hog
 from sklearn.model_selection import train_test_split
-from tqdm import *
+from tqdm import tqdm
+
 
 def get_hog_features(img, orient, pix_per_cell, cell_per_block, visualize_hog=False, feature_vec=True):
     """
@@ -22,39 +23,39 @@ def get_hog_features(img, orient, pix_per_cell, cell_per_block, visualize_hog=Fa
     cells_per_block = (cell_per_block, cell_per_block)
 
     if visualize_hog is True:
-        hog_features, hog_image = hog(img,
-                                      orientations=orient,
-                                      pixels_per_cell=pixels_per_cell,
-                                      cells_per_block=cells_per_block,
-                                      transform_sqrt=True,
-                                      visualise=visualize_hog,
-                                      feature_vector=feature_vec)
+        hog_feat, hog_image = hog(img,
+                                  orientations=orient,
+                                  pixels_per_cell=pixels_per_cell,
+                                  cells_per_block=cells_per_block,
+                                  transform_sqrt=True,
+                                  visualise=visualize_hog,
+                                  feature_vector=feature_vec)
 
-        return features, hog_image
+        return hog_feat, hog_image
 
     else:
-        features = hog(img,
+        hog_feat = hog(img,
                        orientations=orient,
-                       pixels_per_cell=cells_per_block,
+                       pixels_per_cell=pixels_per_cell,
                        cells_per_block=cells_per_block,
                        transform_sqrt=True,
                        visualise=visualize_hog,
                        feature_vector=feature_vec)
 
-        return features
+        return hog_feat
 
 
-def bin_spatial(img, size=(32, 32)):
+def get_bin_spatial(img, size=(32, 32)):
     """
     Defines a function to compute binned color features
     """
-    spatial_features = cv2.resize(img, size).ravel()
+    spatial_feat = cv2.resize(img, size).ravel()
 
-    return spatial_features
+    return spatial_feat
 
 
 # NEED TO CHANGE bins_range if reading .png files with mpimg!
-def color_hist(img, nbins=32, bins_range=(0, 1)):
+def get_color_hist(img, nbins=32, bins_range=(0, 1)):
     """
     compute color histogram features
 
@@ -66,33 +67,33 @@ def color_hist(img, nbins=32, bins_range=(0, 1)):
     channel2_hist = np.histogram(img[:, :, 1], bins=nbins, range=bins_range)
     channel3_hist = np.histogram(img[:, :, 2], bins=nbins, range=bins_range)
 
-    hist_features = np.concatenate((channel1_hist[0], channel2_hist[0], channel3_hist[0]))
+    hist_feat = np.concatenate((channel1_hist[0], channel2_hist[0], channel3_hist[0]))
 
-    return hist_features
+    return hist_feat
 
 
-def change_color_space(img, color_space):
+def change_color_space(img, colorspace):
 
-    if color_space != 'RGB':
-        if color_space == 'HSV':
+    if colorspace != 'RGB':
+        if colorspace == 'HSV':
             feature_image = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
 
-        elif color_space == 'LUV':
+        elif colorspace == 'LUV':
             feature_image = cv2.cvtColor(img, cv2.COLOR_RGB2LUV)
 
-        elif color_space == 'HLS':
+        elif colorspace == 'HLS':
             feature_image = cv2.cvtColor(img, cv2.COLOR_RGB2HLS)
 
-        elif color_space == 'YUV':
+        elif colorspace == 'YUV':
             feature_image = cv2.cvtColor(img, cv2.COLOR_RGB2YUV)
 
-        elif color_space == 'YCrCb':
+        elif colorspace == 'YCrCb':
             feature_image = cv2.cvtColor(img, cv2.COLOR_RGB2YCrCb)
 
     else:
         feature_image = np.copy(img)
 
-    return img
+    return feature_image
 
 
 def extract_features(img, color_space='RGB', spatial_size=(32, 32),
@@ -105,23 +106,24 @@ def extract_features(img, color_space='RGB', spatial_size=(32, 32),
     feature_image = change_color_space(img, color_space)
 
     if use_spatial_feat is True:
-        spatial_features = bin_spatial(feature_image, size=spatial_size)
+        spatial_features = get_bin_spatial(feature_image, size=spatial_size)
         img_features.append(spatial_features)
 
     if use_hist_feat is True:
-        hist_features = color_hist(feature_image, nbins=hist_bins)
+        hist_features = get_color_hist(feature_image, nbins=hist_bins)
         img_features.append(hist_features)
 
     if use_hog_feat is True:
         if hog_channel == 'ALL':
             hog_features = []
             for channel in range(feature_image.shape[2]):
-                hog_features.extend(get_hog_features(feature_image[:, :, channel],
+                hog_features.append(get_hog_features(feature_image[:, :, channel],
                                                      orient,
                                                      pix_per_cell,
                                                      cell_per_block,
                                                      visualize_hog=False,
                                                      feature_vec=True))
+            hog_features = np.ravel(hog_features)
         else:
             hog_features = get_hog_features(feature_image[:, :, hog_channel],
                                             orient,
@@ -175,47 +177,50 @@ def extract_features_from_imglist(image_path_list,
 
 if __name__ == "__main__":
 
-    path_cars = '/Users/Klemens/Udacity_Nano_Car/P5_VehicleDetection/labeled_data/vehicles'
-    path_notcars = '/Users/Klemens/Udacity_Nano_Car/P5_VehicleDetection/labeled_data/non-vehicles'
+    path_cars = '/Users/Klemens/Udacity_Nano_Car/P5_labeled_data/vehicles'
+    path_notcars = '/Users/Klemens/Udacity_Nano_Car/P5_labeled_data/non-vehicles'
     cars = [os.path.join(dirpath, f) for dirpath, dirnames, files in os.walk(path_cars) for f in files if f.endswith('.png')]
     notcars = [os.path.join(dirpath, f) for dirpath, dirnames, files in os.walk(path_notcars) for f in files if f.endswith('.png')]
 
-    color_space = 'HSV'  # Can be RGB, HSV, LUV, HLS, YUV, YCrCb
-    orient = 9  # HOG orientations
-    pix_per_cell = 8  # HOG pixels per cell
-    cell_per_block = 2  # HOG cells per block
-    hog_channel = 0 # Can be 0, 1, 2, or "ALL"
+    cars = cars[0:10]
+    notcars = notcars[0:10]
+
+    color_space = 'RGB'  # Can be RGB, HSV, LUV, HLS, YUV, YCrCb
+    orientation = 9  # HOG orientations
+    num_pix_per_cell = 8  # HOG pixels per cell
+    num_cell_per_block = 2  # HOG cells per block
+    hog_channel_select = 0 # Can be 0, 1, 2, or "ALL"
     spatial_size = (16, 16)  # Spatial binning dimensions
-    hist_bins = 10    # Number of histogram bins
-    use_spatial_feat = True
-    use_hist_feat = True
-    use_hog_feat = True
+    histogram_bins = 32    # Number of histogram bins
+    use_spatial_features = False
+    use_hist_features = False
+    use_hog_features = True
 
     print('Car Features')
     car_features = extract_features_from_imglist(cars,
                                                  color_space=color_space,
                                                  spatial_size=spatial_size,
-                                                 hist_bins=hist_bins,
-                                                 orient=orient,
-                                                 pix_per_cell=pix_per_cell,
-                                                 cell_per_block=cell_per_block,
-                                                 hog_channel=hog_channel,
-                                                 use_spatial_feat=use_spatial_feat,
-                                                 use_hist_feat=use_hist_feat,
-                                                 use_hog_feat=use_hog_feat)
+                                                 hist_bins=histogram_bins,
+                                                 orient=orientation,
+                                                 pix_per_cell=num_pix_per_cell,
+                                                 cell_per_block=num_cell_per_block,
+                                                 hog_channel=hog_channel_select,
+                                                 use_spatial_feat=use_spatial_features,
+                                                 use_hist_feat=use_hist_features,
+                                                 use_hog_feat=use_hog_features)
 
-    print('Notcar Features)')
+    print('Notcar Features')
     notcar_features = extract_features_from_imglist(notcars,
                                                     color_space=color_space,
                                                     spatial_size=spatial_size,
-                                                    hist_bins=hist_bins,
-                                                    orient=orient,
-                                                    pix_per_cell=pix_per_cell,
-                                                    cell_per_block=cell_per_block,
-                                                    hog_channel=hog_channel,
-                                                    use_spatial_feat=use_spatial_feat,
-                                                    use_hist_feat=use_hist_feat,
-                                                    use_hog_feat=use_hog_feat)
+                                                    hist_bins=histogram_bins,
+                                                    orient=orientation,
+                                                    pix_per_cell=num_pix_per_cell,
+                                                    cell_per_block=num_cell_per_block,
+                                                    hog_channel=hog_channel_select,
+                                                    use_spatial_feat=use_spatial_features,
+                                                    use_hist_feat=use_hist_features,
+                                                    use_hog_feat=use_hog_features)
 
     X = np.vstack((car_features, notcar_features)).astype(np.float64)
 
@@ -241,7 +246,7 @@ if __name__ == "__main__":
                                                         test_size=0.2,
                                                         random_state=rand_state)
 
-    print('Using:', orient, 'orientations', pix_per_cell, 'pixels per cell and', cell_per_block, 'cells per block')
+    print('Using:', orientation, 'orientations', num_pix_per_cell, 'pixels per cell and', num_cell_per_block, 'cells per block')
     print('Feature vector length:', len(X_train[0]))
 
     # Use a linear SVC classifier
@@ -266,14 +271,14 @@ if __name__ == "__main__":
                          'X_scaler': X_scaler,
                          'color_space': color_space,
                          'spatial_size': spatial_size,
-                         'hist_bins': hist_bins,
-                         'orient': orient,
-                         'pix_per_cell': pix_per_cell,
-                         'cell_per_block': cell_per_block,
-                         'hog_channel': hog_channel,
-                         'use_spatial_feat': use_spatial_feat,
-                         'use_hist_feat': use_hist_feat,
-                         'use_hog_feat': use_hog_feat
+                         'histogram_bins': histogram_bins,
+                         'orientation': orientation,
+                         'num_pix_per_cell': num_pix_per_cell,
+                         'num_pix_per_cell': num_cell_per_block,
+                         'hog_channel_select': hog_channel_select,
+                         'use_spatial_features': use_spatial_features,
+                         'use_hist_features': use_hist_features,
+                         'use_hog_features': use_hog_features
                          },
                         pfile, pickle.HIGHEST_PROTOCOL)
 
