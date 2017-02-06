@@ -71,37 +71,48 @@ def color_hist(img, nbins=32, bins_range=(0, 1)):
     return hist_features
 
 
-def extract_features(img, color_space='RGB', spatial_size=(32, 32),
-                     hist_bins=32, orient=9,
-                     pix_per_cell=8, cell_per_block=2, hog_channel=0,
-                     spatial_feat=True, hist_feat=True, hog_feat=True):
-
-    img_features = []
+def change_color_space(img, color_space):
 
     if color_space != 'RGB':
         if color_space == 'HSV':
             feature_image = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
-            feature_image[:, :, 1] = feature_image[:, :, 1]/feature_image[:, :, 1].max()
+
         elif color_space == 'LUV':
             feature_image = cv2.cvtColor(img, cv2.COLOR_RGB2LUV)
+
         elif color_space == 'HLS':
             feature_image = cv2.cvtColor(img, cv2.COLOR_RGB2HLS)
+
         elif color_space == 'YUV':
             feature_image = cv2.cvtColor(img, cv2.COLOR_RGB2YUV)
+
         elif color_space == 'YCrCb':
             feature_image = cv2.cvtColor(img, cv2.COLOR_RGB2YCrCb)
+
     else:
         feature_image = np.copy(img)
 
-    if spatial_feat is True:
+    return img
+
+
+def extract_features(img, color_space='RGB', spatial_size=(32, 32),
+                     hist_bins=32, orient=9,
+                     pix_per_cell=8, cell_per_block=2, hog_channel=0,
+                     use_spatial_feat=True, use_hist_feat=True, use_hog_feat=True):
+
+    img_features = []
+
+    feature_image = change_color_space(img, color_space)
+
+    if use_spatial_feat is True:
         spatial_features = bin_spatial(feature_image, size=spatial_size)
         img_features.append(spatial_features)
 
-    if hist_feat is True:
+    if use_hist_feat is True:
         hist_features = color_hist(feature_image, nbins=hist_bins)
         img_features.append(hist_features)
 
-    if hog_feat is True:
+    if use_hog_feat is True:
         if hog_channel == 'ALL':
             hog_features = []
             for channel in range(feature_image.shape[2]):
@@ -132,9 +143,9 @@ def extract_features_from_imglist(image_path_list,
                                   pix_per_cell=8,
                                   cell_per_block=2,
                                   hog_channel=0,
-                                  spatial_feat=True,
-                                  hist_feat=True,
-                                  hog_feat=True):
+                                  use_spatial_feat=True,
+                                  use_hist_feat=True,
+                                  use_hog_feat=True):
     """
     Define a function to extract features from a list of images
 
@@ -154,35 +165,13 @@ def extract_features_from_imglist(image_path_list,
                                         pix_per_cell=pix_per_cell,
                                         cell_per_block=cell_per_block,
                                         hog_channel=hog_channel,
-                                        spatial_feat=spatial_feat,
-                                        hist_feat=hist_feat,
-                                        hog_feat=hog_feat)
+                                        use_spatial_feat=use_spatial_feat,
+                                        use_hist_feat=use_hist_feat,
+                                        use_hog_feat=use_hog_feat)
 
         features.append(img_features)
 
     return features
-
-
-def add_heat(heatmap, bbox_list):
-    """
-    Iterate through list of bboxes and add 1 for all pixels inside each bbox
-
-    """
-    for box in bbox_list:
-
-        # Assuming each "box" takes the form ((x1, y1), (x2, y2))
-        heatmap[box[0][1]:box[1][1], box[0][0]:box[1][0]] += 1
-
-    return heatmap
-
-
-def apply_threshold(heatmap, threshold):
-    """
-    Zero out pixels below the threshold
-    """
-    heatmap[heatmap <= threshold] = 0
-
-    return heatmap
 
 
 def slide_window(img, x_start_stop=[None, None], y_start_stop=[None, None],
@@ -231,8 +220,8 @@ def search_windows(img, windows_list, clf, scaler, color_space='RGB',
                    spatial_size=(32, 32), hist_bins=32,
                    hist_range=(0, 256), orient=9,
                    pix_per_cell=8, cell_per_block=2,
-                   hog_channel=0, spatial_feat=True,
-                   hist_feat=True, hog_feat=True):
+                   hog_channel=0, use_spatial_feat=True,
+                   use_hist_feat=True, use_hog_feat=True):
     """
     For each window in windows_list, features are extracted and fed into
     classifier. If classified as a car, it is kept and finally returned.
@@ -251,9 +240,9 @@ def search_windows(img, windows_list, clf, scaler, color_space='RGB',
                                     pix_per_cell=pix_per_cell,
                                     cell_per_block=cell_per_block,
                                     hog_channel=hog_channel,
-                                    spatial_feat=spatial_feat,
-                                    hist_feat=hist_feat,
-                                    hog_feat=hog_feat)
+                                    use_spatial_feat=use_spatial_feat,
+                                    use_hist_feat=use_hist_feat,
+                                    use_hog_feat=use_hog_feat)
 
         test_features = scaler.transform(np.array(features).reshape(1, -1))
 
@@ -275,6 +264,28 @@ def draw_boxes_pos_windows(img, bboxes, color=(0, 0, 255), thick=6):
         cv2.rectangle(imcopy, bbox[0], bbox[1], color, thick)
 
     return imcopy
+
+
+def add_heat(heatmap, bbox_list):
+    """
+    Iterate through list of bboxes and add 1 for all pixels inside each bbox
+
+    """
+    for box in bbox_list:
+
+        # Assuming each "box" takes the form ((x1, y1), (x2, y2))
+        heatmap[box[0][1]:box[1][1], box[0][0]:box[1][0]] += 1
+
+    return heatmap
+
+
+def apply_threshold(heatmap, threshold):
+    """
+    Zero out pixels below the threshold
+    """
+    heatmap[heatmap <= threshold] = 0
+
+    return heatmap
 
 
 def draw_boxes_cars(img, labels):
@@ -306,20 +317,17 @@ if __name__ == "__main__":
     cars = [os.path.join(dirpath, f) for dirpath, dirnames, files in os.walk(path_cars) for f in files if f.endswith('.png')]
     notcars = [os.path.join(dirpath, f) for dirpath, dirnames, files in os.walk(path_notcars) for f in files if f.endswith('.png')]
 
-
-    # feature extraction
-    ### TODO: Tweak these parameters and see how the results change.
-    color_space = 'HSV' # Can be RGB, HSV, LUV, HLS, YUV, YCrCb
+    color_space = 'HSV'  # Can be RGB, HSV, LUV, HLS, YUV, YCrCb
     orient = 9  # HOG orientations
-    pix_per_cell = 8 # HOG pixels per cell
-    cell_per_block = 2 # HOG cells per block
-    hog_channel = "ALL" # Can be 0, 1, 2, or "ALL"
-    spatial_size = (16, 16) # Spatial binning dimensions
+    pix_per_cell = 8  # HOG pixels per cell
+    cell_per_block = 2  # HOG cells per block
+    hog_channel = "ALL"  # Can be 0, 1, 2, or "ALL"
+    spatial_size = (16, 16)  # Spatial binning dimensions
     hist_bins = 10    # Number of histogram bins
-    spatial_feat = True # Spatial features on or off
-    hist_feat = True # Histogram features on or off
-    hog_feat = True # HOG features on or off
-    y_start_stop = [350, 600] # Min and max in y to search in slide_window()
+    use_spatial_feat = True
+    use_hist_feat = True
+    use_hog_feat = True
+    y_start_stop = [350, 600]  # Min and max in y to search in slide_window()
 
     car_features = extract_features_from_imglist(cars,
                                                  color_space=color_space,
@@ -329,9 +337,9 @@ if __name__ == "__main__":
                                                  pix_per_cell=pix_per_cell,
                                                  cell_per_block=cell_per_block,
                                                  hog_channel=hog_channel,
-                                                 spatial_feat=spatial_feat,
-                                                 hist_feat=hist_feat,
-                                                 hog_feat=hog_feat)
+                                                 use_spatial_feat=use_spatial_feat,
+                                                 use_hist_feat=use_hist_feat,
+                                                 use_hog_feat=use_hog_feat)
 
     notcar_features = extract_features_from_imglist(notcars,
                                                     color_space=color_space,
@@ -341,9 +349,9 @@ if __name__ == "__main__":
                                                     pix_per_cell=pix_per_cell,
                                                     cell_per_block=cell_per_block,
                                                     hog_channel=hog_channel,
-                                                    spatial_feat=spatial_feat,
-                                                    hist_feat=hist_feat,
-                                                    hog_feat=hog_feat)
+                                                    use_spatial_feat=use_spatial_feat,
+                                                    use_hist_feat=use_hist_feat,
+                                                    use_hog_feat=use_hog_feat)
 
     X = np.vstack((car_features, notcar_features)).astype(np.float64)
 
@@ -412,9 +420,9 @@ if __name__ == "__main__":
                                  pix_per_cell=pix_per_cell,
                                  cell_per_block=cell_per_block,
                                  hog_channel=hog_channel,
-                                 spatial_feat=spatial_feat,
-                                 hist_feat=hist_feat,
-                                 hog_feat=hog_feat)
+                                 use_spatial_feat=use_spatial_feat,
+                                 use_hist_feat=use_hist_feat,
+                                 use_hog_feat=use_hog_feat)
 
     window_img = draw_boxes_pos_windows(draw_image, hot_windows, color=(0, 0, 255), thick=6)
 
