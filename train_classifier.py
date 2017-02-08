@@ -360,7 +360,7 @@ if __name__ == "__main__":
                          'histogram_bins': histogram_bins,
                          'orientation': orientation,
                          'num_pix_per_cell': num_pix_per_cell,
-                         'num_pix_per_cell': num_cell_per_block,
+                         'num_cell_per_block': num_cell_per_block,
                          'hog_channel_select': hog_channel_select,
                          'use_spatial_features': use_spatial_features,
                          'use_hist_features': use_hist_features,

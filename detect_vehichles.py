@@ -4,10 +4,12 @@ import numpy as np
 import cv2
 import os
 import time
+import pickle
 
 from scipy.ndimage.measurements import label
 from train_classifier import extract_features
 
+from moviepy.editor import VideoFileClip
 
 def generate_windows_list(img, x_start_stop=[None, None], y_start_stop=[None, None],
                           xy_window=(64, 64), xy_overlap=(0.5, 0.5)):
@@ -89,7 +91,7 @@ def search_windows(img, windows_list, clf, scaler, color_space='RGB',
     return windows_positive
 
 
-def draw_boxes_pos_windows(img, bboxes, color=(0, 0, 255), thick=6):
+def draw_boxes_on_image(img, bboxes, color=(0, 0, 255), thick=6):
     """
     draw rectangles specified in bboxes (bounding boxes) to image
     """
@@ -145,9 +147,87 @@ def draw_boxes_cars(img, labels):
     return img
 
 
+def process_image(img):
+
+    xy_overlap = (0.75, 0.75)
+    windows64 = generate_windows_list(img, x_start_stop=[450, 1200], y_start_stop=[350, 500],
+                                      xy_window=(64, 64), xy_overlap=xy_overlap)
+
+    if DEBUG_MODE:
+        windows_img64 = draw_boxes_on_image(np.copy(img), [windows64[0]], color=(0, 0, 255), thick=4)
+        windows_img64 = draw_boxes_on_image(windows_img64, windows64, color=(0, 0, 255), thick=1)
+        mpimg.imsave('output_images/windows_img64', windows_img64)
+
+
+    windows128 = generate_windows_list(img, x_start_stop=[350, 1200], y_start_stop=[325, 550],
+                                      xy_window=(128, 128), xy_overlap=xy_overlap)
+
+    if DEBUG_MODE:
+        windows_img128 = draw_boxes_on_image(np.copy(img), [windows128[0]], color=(0, 0, 255), thick=4)
+        windows_img128 = draw_boxes_on_image(windows_img128, windows128, color=(0, 0, 255), thick=1)
+        mpimg.imsave('output_images/windows_img128', windows_img128)
+
+
+    # windows192 = generate_windows_list(img, x_start_stop=[300, None], y_start_stop=[275, 650],
+    #                                   xy_window=(192, 192), xy_overlap=xy_overlap)
+    #
+    # windows_img192 = draw_boxes_on_image(np.copy(img), [windows192[0]], color=(0, 0, 255), thick=4)
+    # windows_img192 = draw_boxes_on_image(windows_img192, windows192, color=(0, 0, 255), thick=1)
+    # mpimg.imsave('output_images/windows_img192', windows_img192)
+
+    windows256 = generate_windows_list(img, x_start_stop=[200, None], y_start_stop=[300, 700],
+                                      xy_window=(256, 256), xy_overlap=xy_overlap)
+
+    if DEBUG_MODE:
+        windows_img256 = draw_boxes_on_image(np.copy(img), [windows256[0]], color=(0, 0, 255), thick=4)
+        windows_img256 = draw_boxes_on_image(windows_img256, windows256, color=(0, 0, 255), thick=1)
+        mpimg.imsave('output_images/windows_img256', windows_img256)
+
+    windows = windows64 + windows128 + windows256
+
+    hot_windows = search_windows(img,
+                                 windows,
+                                 svc,
+                                 X_scaler,
+                                 color_space=color_space,
+                                 spatial_size=spatial_size,
+                                 hist_bins=histogram_bins,
+                                 orient=orientation,
+                                 pix_per_cell=num_pix_per_cell,
+                                 cell_per_block=num_cell_per_block,
+                                 hog_channel=hog_channel_select,
+                                 use_spatial_feat=use_spatial_features,
+                                 use_hist_feat=use_hist_features,
+                                 use_hog_feat=use_hog_features)
+
+    pos_windows_img = draw_boxes_on_image(np.copy(img), hot_windows, color=(0, 0, 255), thick=6)
+    mpimg.imsave('output_images/pos_windows_img', pos_windows_img)
+
+    heatmap = np.zeros_like(img[:, :, 0]).astype(np.float)
+    heatmap = add_heat(heatmap, hot_windows)
+
+    heatmap_threshed = apply_threshold(heatmap, 2)
+    labels = label(heatmap_threshed)
+
+    if DEBUG_MODE:
+        print(labels[1], 'cars found')
+
+    if DEBUG_MODE:
+        mpimg.imsave('output_images/labelling', labels[0], cmap='gray')
+
+    detected_cars_img = draw_boxes_cars(np.copy(img), labels)
+
+    if DEBUG_MODE:
+        mpimg.imsave('output_images/detected_cars_img', detected_cars_img)
+
+    return detected_cars_img
+
+
 if __name__ == "__main__":
 
-    # Load the training, validation and test data
+    PIPELINE_VIDEO = True
+    DEBUG_MODE = not(PIPELINE_VIDEO)
+
     data_file = 'ClassifierData.p'
     with open(data_file, mode='rb') as f:
         data = pickle.load(f)
@@ -157,68 +237,26 @@ if __name__ == "__main__":
     color_space = data['color_space']
     spatial_size = data['spatial_size']
     X_scaler = data['X_scaler']
-    hist_bins = data['hist_bins']
-    pix_per_cell = data['pix_per_cell']
-    cell_per_block = data['cell_per_block']
-    hog_channel = data['hog_channel']
-    use_spatial_feat = data['use_spatial_feat']
-    use_hist_feat = data['use_hist_feat']
-    use_hog_feat = data['use_hog_feat']
+    histogram_bins = data['histogram_bins']
+    orientation = data['orientation']
+    num_pix_per_cell = data['num_pix_per_cell']
+    num_cell_per_block = data['num_cell_per_block']
+    hog_channel_select = data['hog_channel_select']
+    use_spatial_features = data['use_spatial_features']
+    use_hist_features = data['use_hist_features']
+    use_hog_features = data['use_hog_features']
 
-    y_start_stop = [350, 600]  # Min and max in y to search in generate_windows_list()
-    image = mpimg.imread('test_images/test1.jpg')
+    if PIPELINE_VIDEO:
 
-    image = image.astype(np.float32)/255
+        white_output = 'project_video_processed.mp4'
+        clip1 = VideoFileClip("project_video.mp4")
+        white_clip = clip1.fl_image(process_image)
+        white_clip.write_videofile(white_output, audio=False)
 
-    # windows50 = generate_windows_list(image, x_start_stop=[None, None], y_start_stop=y_start_stop,
-    #                                   xy_window=(50, 50), xy_overlap=(0.3, 0.3))
-    #
-    # windows96 = generate_windows_list(image, x_start_stop=[None, None], y_start_stop=y_start_stop,
-    #                                   xy_window=(96, 96), xy_overlap=(0.5, 0.5))
+    else:
 
-    windows150 = generate_windows_list(image, x_start_stop=[None, None], y_start_stop=y_start_stop,
-                                       xy_window=(150, 150), xy_overlap=(0.7, 0.7))
+        fname = 'test_images/test1.jpg'
+        image = mpimg.imread(fname)
+        image = image.astype(np.float32)/255
 
-    windows = windows50 + windows96 + windows150
-
-    all_windows_img = draw_boxes_pos_windows(np.copy(image), windows, color=(0, 0, 255), thick=6)
-    plt.figure()
-    plt.imshow(all_windows_img)
-
-    # sliding window
-    hot_windows = search_windows(image,
-                                 windows,
-                                 svc,
-                                 X_scaler,
-                                 color_space=color_space,
-                                 spatial_size=spatial_size,
-                                 hist_bins=hist_bins,
-                                 orient=orient,
-                                 pix_per_cell=pix_per_cell,
-                                 cell_per_block=cell_per_block,
-                                 hog_channel=hog_channel,
-                                 use_spatial_feat=use_spatial_feat,
-                                 use_hist_feat=use_hist_feat,
-                                 use_hog_feat=use_hog_feat)
-
-    pos_windows_img = draw_boxes_pos_windows(np.copy(image), hot_windows, color=(0, 0, 255), thick=6)
-
-    plt.figure()
-    plt.imshow(pos_windows_img)
-
-    heatmap = np.zeros_like(image[:, :, 0]).astype(np.float)
-    heatmap = add_heat(heatmap, hot_windows)
-
-    heatmap_threshed = apply_threshold(heatmap, 2)
-    labels = label(heatmap_threshed)
-
-    print(labels[1], 'cars found')
-
-    plt.figure()
-    plt.imshow(labels[0], cmap='gray')
-
-    draw_img = draw_boxes_cars(np.copy(image), labels)
-
-    plt.figure()
-    plt.imshow(draw_img)
-#    plt.show()
+        img_detected_vehicle = process_image(image)
