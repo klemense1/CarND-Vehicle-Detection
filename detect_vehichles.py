@@ -13,19 +13,44 @@ from train_classifier import extract_features
 from moviepy.editor import VideoFileClip
 
 class Car():
-    def __init__(self, confidence_threshold):
-        self.position = []
+    def __init__(self, queuelength, confidence_threshold, initial_position):
+        self.recent_positions = [initial_position]
+        self.position = initial_position
         self.boundingbox = []
         self.validated = False
-        self.tracked_frames = 0
+        self.tracked_frames = [1]
+        self.queuelength = queuelength
         self.confidence_threshold = confidence_threshold
         self.car_id = random.randint(1, 1e9)
-        self.in_doubt = False
+        self.to_delete = False
+        self.buffer = 0
 
-    def update(self):
-        self.tracked_frames += 1
-        if self.confidence_threshold > confidence_threshold:
+    def found_again(self, new_position):
+        if self.buffer == self.queuelength:
+            self.tracked_frames.pop(0)
+            self.recent_positions.pop(0)
+        self.tracked_frames.append(1)
+        self.recent_positions.append(new_position)
+        self.position = np.mean(self.recent_positions, axis=0).astype(int)
+
+        if sum(self.tracked_frames) > self.confidence_threshold:
             self.validated = True
+        else:
+            self.validated = False
+
+        self.buffer = len(self.tracked_frames)
+
+    def not_found(self):
+
+        if self.buffer == self.queuelength:
+            self.tracked_frames.pop(0)
+
+        self.tracked_frames.append(0)
+
+        if sum(self.tracked_frames) == 0:
+            self.to_delete = True
+
+        self.buffer = len(self.tracked_frames)
 
 class Tracing_algorithm():
     def __init__(self, queuelength):
@@ -42,32 +67,28 @@ class Tracing_algorithm():
 
         self.buffer = 0
 
-        self.recent_center_of_vehicles = []
-
-        self.current_center_of_vehicles = []
+        self.center_of_found_cars = []
 
         self.labels = None
 
-        self.recent_vehicles_detected = [0]
-
-        self.current_vehicles_detected = 0
+        self.number_of_found_cars = 0
 
         self.binary_map = None
 
-    def add_data(self):
+        self.list_of_cars = []
 
-        if self.buffer==self.queuelength:
+    def add_heatmap_to_buffer(self):
+
+        if self.buffer == self.queuelength:
             self.recent_heatmaps.pop(0)
 
         self.recent_heatmaps.append(self.current_heatmap)
         self.buffer = len(self.recent_heatmaps)
 
-        # print('Data added, buffer=', self.buffer)
-
-    def set_vehicles_position(self):
+    def set_vehicles_positions(self):
 
         positions = []
-        for car_number in range(1, self.current_vehicles_detected + 1):
+        for car_number in range(1, self.number_of_found_cars + 1):
             # Find pixels with each car_number label value
             nonzero = (self.binary_map == car_number).nonzero()
 
@@ -79,34 +100,39 @@ class Tracing_algorithm():
             y = int(np.mean([np.min(nonzeroy), np.max(nonzeroy)]))
             positions.append([x, y])
 
-        self.current_center_of_vehicles = positions
+        self.center_of_found_cars = positions
 
-        # if self.buffer>self.queuelength:
-        #     self.recent_center_of_vehicles.pop(0)
-        self.recent_center_of_vehicles.append(self.current_center_of_vehicles)
+    def update_car_list(self):
+        found_cars_mathed = [False]*self.number_of_found_cars
+        new_car_list = []
 
-    def check_data(self):
-        plausible=False
-        if self.current_vehicles_detected < self.recent_vehicles_detected[-2]:
-            print('detected less vehicles than before')
-            for center in self.current_center_of_vehicles:
-                for last_center in self.recent_center_of_vehicles[-2]:
-                    distance = np.sqrt(np.square(center[0]-last_center[0]) + np.square(center[1]-last_center[1]))
-                    print('Distance', distance)
-                    if distance<20:
-                        plausible=True
-                        print('Data is plausible')
-        else:
-            plausible = True
-        return plausible
+        for car in self.list_of_cars:
+            car_found = False
+            for idx_center, center in enumerate(self.center_of_found_cars):
+                distance = np.sqrt(np.square(center[0]-car.position[0]) + np.square(center[1]-car.position[1]))
+                print('Distance', distance)
+                if distance < 50:
+                    print('You have a match')
+                    found_cars_mathed[idx_center] = True
+                    car_found = True
 
-    def remove_data_from_buffer(self):
-        print('Data was not plausible, dropping data')
-        self.recent_center_of_vehicles.pop()
-        self.recent_vehicles_detected.pop()
+                    car.found_again(center)
+                    new_car_list.append(car)
+            if not car_found:
+                car.not_found()
+                if not car.to_delete:
+                    new_car_list.append(car)
 
-        self.current_vehicles_detected = self.recent_vehicles_detected[-1]
-        self.current_center_of_vehicles = self.recent_center_of_vehicles[-1]
+        print('found_cars_mathed', found_cars_mathed)
+        print('self.center_of_found_cars', self.center_of_found_cars)
+
+        self.list_of_cars = new_car_list
+
+        for idx_center, center in enumerate(self.center_of_found_cars):
+            if found_cars_mathed[idx_center] == False:
+                print('Creating new car instance at', center)
+                new_car = Car(5, 3, center)
+                self.list_of_cars.append(new_car)
 
     def extract_vehicles(self):
 
@@ -114,18 +140,8 @@ class Tracing_algorithm():
 
         labels = label(heatmap_threshed)
         self.binary_map = labels[0]
-        self.current_vehicles_detected = labels[1]
-        #
-        # if self.buffer > self.queuelength:
-        #     self.recent_vehicles_detected.pop(0)
-        self.recent_vehicles_detected.append(self.current_vehicles_detected)
+        self.number_of_found_cars = labels[1]
 
-        self.set_vehicles_position()
-        print('Extracting_vehicles()...')
-        print('current_vehicles_detected', self.current_vehicles_detected)
-        print('recent_vehicles_detected', self.recent_vehicles_detected)
-        print('current_center_of_vehicles', self.current_center_of_vehicles)
-        print('recent_center_of_vehicles', self.recent_center_of_vehicles)
     def set_average_heatmap(self):
 
         if self.buffer == 1:
@@ -142,21 +158,31 @@ class Tracing_algorithm():
 
     def update(self, heatmp):
         print('###\nNew frame\n###')
-        self.current_heatmap = heatmp
-
-        self.add_data()
-
-        self.set_average_heatmap()
 
         self.frame += 1
 
+        self.current_heatmap = heatmp
+
+        self.add_heatmap_to_buffer()
+
+        self.set_average_heatmap()
+
         self.extract_vehicles()
 
-        if self.buffer>2:
-            if self.check_data() is False:
+        self.set_vehicles_positions()
 
-                self.remove_data_from_buffer()
-                #self.set_vehicles_position()
+        print('Extracting_vehicles()...')
+        print('number_of_found_cars', self.number_of_found_cars)
+        print('center_of_found_cars', self.center_of_found_cars)
+
+        self.update_car_list()
+
+        for car in self.list_of_cars:
+            print('\ncar id:', car.car_id)
+            print('   position', car.position)
+            print('   validated', car.validated)
+            print('   tracked_frames', car.tracked_frames)
+
 
 def generate_windows_list(img, x_start_stop=[None, None], y_start_stop=[None, None],
                           xy_window=(64, 64), xy_overlap=(0.5, 0.5)):
@@ -277,7 +303,7 @@ def draw_boxes_cars(img, vehicles_instance):
     Draw boxes around all detected cars
     """
 
-    for car_number in range(1, vehicles_instance.current_vehicles_detected+1):
+    for car_number in range(1, vehicles_instance.number_of_found_cars+1):
         # Find pixels with each car_number label value
         nonzero = (vehicles_instance.binary_map == car_number).nonzero()
 
@@ -364,7 +390,7 @@ def detect(img):
         mpimg.imsave('output_images/heatmap_current' + annotation, tracer.current_heatmap, cmap='gray')
         mpimg.imsave('output_images/heatmap_average' + annotation, tracer.avg_heatmap, cmap='gray')
 
-        print(tracer.current_vehicles_detected, 'cars found')
+        print(tracer.number_of_found_cars, 'cars found')
 
         mpimg.imsave('output_images/labelling' + annotation, tracer.binary_map, cmap='gray')
 
@@ -372,13 +398,14 @@ def detect(img):
 
 
     detected_cars_img = np.copy(img)
-    for center in tracer.current_center_of_vehicles:
-        print('Center', center)
-        cv2.circle(detected_cars_img, tuple(center), 7,255,-1)
+    for car in tracer.list_of_cars:
+        if car.validated:
+            print('Position', car.position)
+            cv2.circle(detected_cars_img, tuple(car.position), 7,255,-1)
 
     font = cv2.FONT_HERSHEY_SIMPLEX
 
-    str_coeff1 = '{}'.format(str(tracer.current_vehicles_detected) + ' cars found')
+    str_coeff1 = '{}'.format(str(tracer.number_of_found_cars) + ' cars found')
     cv2.putText(detected_cars_img, str_coeff1, (130,250), font, 1, (1,0,0), 2, cv2.LINE_AA)
 
     if DEBUG_MODE:
