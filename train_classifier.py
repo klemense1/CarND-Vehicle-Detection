@@ -28,7 +28,7 @@ def get_hog_features(img, orient, pix_per_cell, cell_per_block, visualize_hog=Fa
                                   orientations=orient,
                                   pixels_per_cell=pixels_per_cell,
                                   cells_per_block=cells_per_block,
-                                  transform_sqrt=True,
+                                  transform_sqrt=False,
                                   visualise=visualize_hog,
                                   feature_vector=feature_vec)
 
@@ -39,7 +39,7 @@ def get_hog_features(img, orient, pix_per_cell, cell_per_block, visualize_hog=Fa
                        orientations=orient,
                        pixels_per_cell=pixels_per_cell,
                        cells_per_block=cells_per_block,
-                       transform_sqrt=True,
+                       transform_sqrt=False,
                        visualise=visualize_hog,
                        feature_vector=feature_vec)
 
@@ -48,15 +48,18 @@ def get_hog_features(img, orient, pix_per_cell, cell_per_block, visualize_hog=Fa
 
 def get_bin_spatial(img, size=(32, 32)):
     """
-    Defines a function to compute binned color features
+    Defines a function to compute binned color features. Basically
+    downsampling the image.
     """
-    spatial_feat = cv2.resize(img, size).ravel()
+    color1 = cv2.resize(img[:,:,0], size).ravel()
+    color2 = cv2.resize(img[:,:,1], size).ravel()
+    color3 = cv2.resize(img[:,:,2], size).ravel()
 
-    return spatial_feat
+    return np.hstack((color1, color2, color3))
 
 
 # NEED TO CHANGE bins_range if reading .png files with mpimg!
-def get_color_hist(img, nbins=32, bins_range=(0, 1)):
+def get_color_hist(img, nbins=32):#, bins_range=(0, 1)):
     """
     compute color histogram features
 
@@ -64,9 +67,9 @@ def get_color_hist(img, nbins=32, bins_range=(0, 1)):
     - Concatenate the histograms into a single feature vector
 
     """
-    channel1_hist = np.histogram(img[:, :, 0], bins=nbins, range=bins_range)
-    channel2_hist = np.histogram(img[:, :, 1], bins=nbins, range=bins_range)
-    channel3_hist = np.histogram(img[:, :, 2], bins=nbins, range=bins_range)
+    channel1_hist = np.histogram(img[:, :, 0], bins=nbins)#, range=bins_range)
+    channel2_hist = np.histogram(img[:, :, 1], bins=nbins)#, range=bins_range)
+    channel3_hist = np.histogram(img[:, :, 2], bins=nbins)#, range=bins_range)
 
     hist_feat = np.concatenate((channel1_hist[0], channel2_hist[0], channel3_hist[0]))
 
@@ -186,12 +189,12 @@ if __name__ == "__main__":
     # cars = cars#[0:10]
     # notcars = notcars#[0:10]
 
-    cars_train, cars_val, cars_test, no_train, no_val, no_test = read_in_data.read_in_seperately(path_cars, path_notcars)
-    color_space = 'HLS'  # Can be RGB, HSV, LUV, HLS, YUV, YCrCb
+    cars_train, cars_test, no_train, no_test = read_in_data.read_in_seperately(path_cars, path_notcars)
+    color_space = 'YCrCb'  # Can be RGB, HSV, LUV, HLS, YUV, YCrCb
     orientation = 9  # HOG orientations
     num_pix_per_cell = 8  # HOG pixels per cell
     num_cell_per_block = 2  # HOG cells per block
-    hog_channel_select = [1, 2] # Can be 0, 1, 2, or "ALL"
+    hog_channel_select = [0, 1, 2]  # Can be 0, 1, 2, or "ALL"
     spatial_size = (16, 16)  # Spatial binning dimensions
     histogram_bins = 32    # Number of histogram bins
     use_spatial_features = True
@@ -211,17 +214,6 @@ if __name__ == "__main__":
                                                      use_hist_feat=use_hist_features,
                                                      use_hog_feat=use_hog_features)
 
-    cars_val_features = extract_features_from_imglist(cars_val,
-                                                 color_space=color_space,
-                                                 spatial_size=spatial_size,
-                                                 hist_bins=histogram_bins,
-                                                 orient=orientation,
-                                                 pix_per_cell=num_pix_per_cell,
-                                                 cell_per_block=num_cell_per_block,
-                                                 hog_channel=hog_channel_select,
-                                                 use_spatial_feat=use_spatial_features,
-                                                 use_hist_feat=use_hist_features,
-                                                 use_hog_feat=use_hog_features)
 
     cars_test_features = extract_features_from_imglist(cars_test,
                                                  color_space=color_space,
@@ -248,17 +240,6 @@ if __name__ == "__main__":
                                                     use_hist_feat=use_hist_features,
                                                     use_hog_feat=use_hog_features)
 
-    no_val_features = extract_features_from_imglist(no_val,
-                                                    color_space=color_space,
-                                                    spatial_size=spatial_size,
-                                                    hist_bins=histogram_bins,
-                                                    orient=orientation,
-                                                    pix_per_cell=num_pix_per_cell,
-                                                    cell_per_block=num_cell_per_block,
-                                                    hog_channel=hog_channel_select,
-                                                    use_spatial_feat=use_spatial_features,
-                                                    use_hist_feat=use_hist_features,
-                                                    use_hog_feat=use_hog_features)
 
     no_test_features = extract_features_from_imglist(no_test,
                                                     color_space=color_space,
@@ -273,7 +254,7 @@ if __name__ == "__main__":
                                                     use_hog_feat=use_hog_features)
 
 
-    X = np.vstack((cars_train_features, cars_val_features, cars_test_features, no_train_features, no_val_features, no_test_features)).astype(np.float64)
+    X = np.vstack((cars_train_features, cars_test_features, no_train_features, no_test_features)).astype(np.float64)
 
     # Fit a per-column scaler
     X_scaler = StandardScaler().fit(X)
@@ -283,38 +264,29 @@ if __name__ == "__main__":
 
 
     cars_ntrain = len(cars_train_features)
-    cars_nval = len(cars_val_features)
     cars_ntest = len(cars_test_features)
     ncars_ntrain = len(no_train_features)
-    ncars_nval = len(no_val_features)
     ncars_ntest = len(no_test_features)
 
     idx_feat_cars_train_end = cars_ntrain
-    idx_feat_cars_val_end = idx_feat_cars_train_end + cars_nval
-    idx_feat_cars_test_end = idx_feat_cars_val_end + cars_ntest
+    idx_feat_cars_test_end = idx_feat_cars_train_end + cars_ntest
     idx_feat_no_train_end = idx_feat_cars_test_end + ncars_ntrain
-    idx_feat_no_val_end = idx_feat_no_train_end + ncars_nval
 
     cars_train_feat = scaled_X[:idx_feat_cars_train_end]
-    cars_val_feat = scaled_X[idx_feat_cars_train_end:idx_feat_cars_val_end]
-    cars_test_feat = scaled_X[idx_feat_cars_val_end:idx_feat_cars_test_end]
+    cars_test_feat = scaled_X[idx_feat_cars_train_end:idx_feat_cars_test_end]
 
     notcars_train_feat = scaled_X[idx_feat_cars_test_end:idx_feat_no_train_end]
-    notcars_val_feat = scaled_X[idx_feat_no_train_end:idx_feat_no_val_end]
-    notcars_test_feat = scaled_X[idx_feat_no_val_end:]
+    notcars_test_feat = scaled_X[idx_feat_no_train_end:]
 
     y_train = np.hstack((np.ones(cars_ntrain), np.zeros(ncars_ntrain)))
-    y_val = np.hstack((np.ones(cars_nval), np.zeros(ncars_nval)))
     y_test = np.hstack((np.ones(cars_ntest), np.zeros(ncars_ntest)))
 
     X_train = np.vstack((cars_train_feat, notcars_train_feat))
-    X_val = np.vstack((cars_val_feat, notcars_val_feat))
     X_test = np.vstack((cars_test_feat, notcars_test_feat))
 
     rand_state = np.random.randint(0, 100)
 
     X_train, y_train = shuffle(X_train, y_train, random_state=rand_state)
-    X_val, y_val = shuffle(X_val, y_val, random_state=rand_state)
     X_test, y_test = shuffle(X_test, y_test, random_state=rand_state)
 
     # # Define the labels vector
@@ -344,7 +316,6 @@ if __name__ == "__main__":
 
     # Check the score of the SVC
     print('Train Accuracy of SVC = ', round(svc.score(X_train, y_train), 4))
-    print('Validation Accuracy of SVC = ', round(svc.score(X_val, y_val), 4))
     print('Test Accuracy of SVC = ', round(svc.score(X_test, y_test), 4))
 
     pickle_file = 'ClassifierData.p'

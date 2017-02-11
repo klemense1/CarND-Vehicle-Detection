@@ -330,7 +330,7 @@ def detect(img):
                                       xy_window=(64, 64), xy_overlap=xy_overlap)
 
     if DEBUG_MODE:
-        windows_img64 = draw_boxes_on_image(np.copy(img.astype(np.float32)/255), [windows64[0]], color=(0, 0, 1), thick=4)
+        windows_img64 = draw_boxes_on_image(img.astype(np.float32)/255, [windows64[0]], color=(0, 0, 1), thick=4)
         windows_img64 = draw_boxes_on_image(windows_img64, windows64, color=(0, 0, 1), thick=1)
         mpimg.imsave('output_images/windows_img64' + annotation, windows_img64)
 
@@ -339,7 +339,7 @@ def detect(img):
                                       xy_window=(128, 128), xy_overlap=xy_overlap)
 
     if DEBUG_MODE:
-        windows_img128 = draw_boxes_on_image(np.copy(img.astype(np.float32)/255), [windows128[0]], color=(0, 0, 1), thick=4)
+        windows_img128 = draw_boxes_on_image(img.astype(np.float32)/255, [windows128[0]], color=(0, 0, 1), thick=4)
         windows_img128 = draw_boxes_on_image(windows_img128, windows128, color=(0, 0, 1), thick=1)
         mpimg.imsave('output_images/windows_img128' + annotation, windows_img128)
 
@@ -355,7 +355,7 @@ def detect(img):
                                       xy_window=(256, 256), xy_overlap=xy_overlap)
 
     if DEBUG_MODE:
-        windows_img256 = draw_boxes_on_image(np.copy(img.astype(np.float32)/255), [windows256[0]], color=(0, 0, 1), thick=4)
+        windows_img256 = draw_boxes_on_image(img.astype(np.float32)/255, [windows256[0]], color=(0, 0, 1), thick=4)
         windows_img256 = draw_boxes_on_image(windows_img256, windows256, color=(0, 0, 1), thick=1)
         mpimg.imsave('output_images/windows_img256' + annotation, windows_img256)
 
@@ -424,7 +424,7 @@ def process_image(img):
 
 if __name__ == "__main__":
 
-    PIPELINE_VIDEO = True
+    PIPELINE_VIDEO = False
     DEBUG_MODE = True#not(PIPELINE_VIDEO)
 
     data_file = 'ClassifierData.p'
