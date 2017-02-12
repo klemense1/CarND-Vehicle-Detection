@@ -532,7 +532,7 @@ def process_image(img):
 
 if __name__ == "__main__":
 
-    PIPELINE_VIDEO = True
+    PIPELINE_VIDEO = False
     DEBUG_MODE = True#not(PIPELINE_VIDEO)
 
     data_file = 'ClassifierData.p'
