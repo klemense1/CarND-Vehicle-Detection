@@ -8,7 +8,7 @@ import pickle
 import random
 
 from scipy.ndimage.measurements import label
-from train_classifier import extract_features
+from train_classifier import change_color_space, get_bin_spatial, get_color_hist, extract_features, get_hog_features
 
 from moviepy.editor import VideoFileClip
 
@@ -47,7 +47,7 @@ class Car():
 
         self.tracked_frames.append(0)
 
-        if sum(self.tracked_frames) == 0:
+        if sum(self.tracked_frames) < 0.2:
             self.to_delete = True
 
         self.buffer = len(self.tracked_frames)
@@ -111,7 +111,7 @@ class Tracing_algorithm():
             for idx_center, center in enumerate(self.center_of_found_cars):
                 distance = np.sqrt(np.square(center[0]-car.position[0]) + np.square(center[1]-car.position[1]))
                 print('Distance', distance)
-                if distance < 50:
+                if distance < 100:
                     print('You have a match')
                     found_cars_mathed[idx_center] = True
                     car_found = True
@@ -136,7 +136,7 @@ class Tracing_algorithm():
 
     def extract_vehicles(self):
 
-        heatmap_threshed = apply_threshold(self.avg_heatmap, 2)
+        heatmap_threshed = apply_threshold(self.avg_heatmap, 6)
 
         labels = label(heatmap_threshed)
         self.binary_map = labels[0]
@@ -224,6 +224,81 @@ def generate_windows_list(img, x_start_stop=[None, None], y_start_stop=[None, No
             window_list.append(((startx, starty), (endx, endy)))
 
     return window_list
+
+
+def find_cars(img, clf, scaler, color_space='RGB',
+                   spatial_size=(32, 32), hist_bins=32, scale=1, cells_per_step=2, x_start_stop=[None, None], y_start_stop=[None, None], orient=9,
+            pix_per_cell=8, cell_per_block=2):
+    """
+    cells_per_step ... instead of overlap, define how many cells to step
+    """
+    draw_img = np.copy(img)
+
+    heatmap = np.zeros_like(img[:, :, 0])
+
+    img = img.astype(np.float32)/255
+
+    img_to_search = img[y_start_stop[0]:y_start_stop[1], x_start_stop[0]:x_start_stop[1], :]
+
+    # color transformed image
+    ctrans_to_search = change_color_space(img_to_search, colorspace=color_space)
+
+    if scale != 1: # use this as window size
+        imshape = ctrans_to_search.shape
+        ctrans_to_search = cv2.resize(ctrans_to_search, (np.int(imshape[1]/scale), np.int(imshape[0]/scale)))
+
+    ch1 = ctrans_to_search[:, :, 0]
+    ch2 = ctrans_to_search[:, :, 1]
+    ch3 = ctrans_to_search[:, :, 2]
+
+    nxblocks = (ch1.shape[1] // pix_per_cell) - 1 # number of hog cells
+    nyblocks = (ch1.shape[0] // pix_per_cell) - 1
+    nfeat_per_block = orient*cell_per_block**2
+    window = 64
+    nblocks_per_window = (window // pix_per_cell) - 1
+
+    nxsteps = (nxblocks - nblocks_per_window) // cells_per_step
+    nysteps = (nyblocks - nblocks_per_window) // cells_per_step
+
+    # compute individual channel HOG features for the intire image
+    hog1 = get_hog_features(ch1, orient, pix_per_cell, cell_per_block, feature_vec=False)
+    hog2 = get_hog_features(ch1, orient, pix_per_cell, cell_per_block, feature_vec=False)
+    hog3 = get_hog_features(ch1, orient, pix_per_cell, cell_per_block, feature_vec=False)
+
+    for xb in range(nxsteps):
+        for yb in range(nysteps):
+            ypos = yb*cells_per_step
+            xpos = xb*cells_per_step
+            # extract hog features for this patch
+            hog_feat1 = hog1[ypos:ypos+nblocks_per_window, xpos:xpos+nblocks_per_window].ravel()
+            hog_feat2 = hog2[ypos:ypos+nblocks_per_window, xpos:xpos+nblocks_per_window].ravel()
+            hog_feat3 = hog3[ypos:ypos+nblocks_per_window, xpos:xpos+nblocks_per_window].ravel()
+            hog_features = np.hstack((hog_feat1, hog_feat2, hog_feat3))
+
+            xleft = xpos*pix_per_cell
+            ytop = ypos*pix_per_cell
+
+            # extract the image path
+            subimg = cv2.resize(ctrans_to_search[ytop:ytop+window, xleft:xleft+window], (64,64))
+
+            # get color features
+            spatial_features = get_bin_spatial(subimg, size=spatial_size)
+            hist_features = get_color_hist(subimg, nbins=hist_bins)
+
+            # scale features and make prediction
+            test_features = scaler.transform(np.hstack((spatial_features, hist_features, hog_features)))
+
+            test_prediction = clf.predict(test_features)
+
+            if test_prediction == 1:
+                xbox_left = np.int(xleft*scale)
+                ytop_draw = np.int(ytop*scale)
+                win_draw = np.int(window*scale)
+                cv2.rectangle(draw_img, (xbox_left+x_start_stop[0], ytop_draw+y_start_stop[0]), (xbox_left+win_draw+x_start_stop[0], ytop_draw+win_draw+y_start_stop[0]), (0,0,255), 6)
+                # img_boxes.append(((xbox_left, ytop_draw+y_start_stop[0]), (xbox_left+win_draw, ytop_draw+win_draw+y_start_stop[0])))
+                heatmap[ytop_draw+y_start_stop[0]:ytop_draw+win_draw+y_start_stop[0], xbox_left+x_start_stop[0]:xbox_left+win_draw+x_start_stop[0]] += 1
+
+    return draw_img, heatmap
 
 
 def search_windows(img, windows_list, clf, scaler, color_space='RGB',
@@ -325,63 +400,96 @@ def detect(img):
     global tracer
 
     annotation = '_frame' + str(tracer.frame)
-    xy_overlap = (0.8, 0.8)
-    windows64 = generate_windows_list(img, x_start_stop=[475, 1200], y_start_stop=[360, 480],
-                                      xy_window=(64, 64), xy_overlap=xy_overlap)
-
-    if DEBUG_MODE:
-        windows_img64 = draw_boxes_on_image(img.astype(np.float32)/255, [windows64[0]], color=(0, 0, 1), thick=4)
-        windows_img64 = draw_boxes_on_image(windows_img64, windows64, color=(0, 0, 1), thick=1)
-        mpimg.imsave('output_images/windows_img64' + annotation, windows_img64)
-
-
-    windows128 = generate_windows_list(img, x_start_stop=[400, 1200], y_start_stop=[340, 530],
-                                      xy_window=(128, 128), xy_overlap=xy_overlap)
-
-    if DEBUG_MODE:
-        windows_img128 = draw_boxes_on_image(img.astype(np.float32)/255, [windows128[0]], color=(0, 0, 1), thick=4)
-        windows_img128 = draw_boxes_on_image(windows_img128, windows128, color=(0, 0, 1), thick=1)
-        mpimg.imsave('output_images/windows_img128' + annotation, windows_img128)
-
-
-    # windows192 = generate_windows_list(img, x_start_stop=[300, None], y_start_stop=[275, 650],
-    #                                   xy_window=(192, 192), xy_overlap=xy_overlap)
+    # xy_overlap = (0.8, 0.8)
+    # windows64 = generate_windows_list(img, x_start_stop=[475, 1200], y_start_stop=[360, 480],
+    #                                   xy_window=(64, 64), xy_overlap=xy_overlap)
     #
-    # windows_img192 = draw_boxes_on_image(np.copy(img), [windows192[0]], color=(0, 0, 255), thick=4)
-    # windows_img192 = draw_boxes_on_image(windows_img192, windows192, color=(0, 0, 255), thick=1)
-    # mpimg.imsave('output_images/windows_img192', windows_img192)
+    # if DEBUG_MODE:
+    #     windows_img64 = draw_boxes_on_image(img.astype(np.float32)/255, [windows64[0]], color=(0, 0, 1), thick=4)
+    #     windows_img64 = draw_boxes_on_image(windows_img64, windows64, color=(0, 0, 1), thick=1)
+    #     mpimg.imsave('output_images/windows_img64' + annotation, windows_img64)
+    #
+    #
+    # windows128 = generate_windows_list(img, x_start_stop=[400, 1200], y_start_stop=[340, 530],
+    #                                   xy_window=(128, 128), xy_overlap=xy_overlap)
+    #
+    # if DEBUG_MODE:
+    #     windows_img128 = draw_boxes_on_image(img.astype(np.float32)/255, [windows128[0]], color=(0, 0, 1), thick=4)
+    #     windows_img128 = draw_boxes_on_image(windows_img128, windows128, color=(0, 0, 1), thick=1)
+    #     mpimg.imsave('output_images/windows_img128' + annotation, windows_img128)
+    #
+    #
+    # # windows192 = generate_windows_list(img, x_start_stop=[300, None], y_start_stop=[275, 650],
+    # #                                   xy_window=(192, 192), xy_overlap=xy_overlap)
+    # #
+    # # windows_img192 = draw_boxes_on_image(np.copy(img), [windows192[0]], color=(0, 0, 255), thick=4)
+    # # windows_img192 = draw_boxes_on_image(windows_img192, windows192, color=(0, 0, 255), thick=1)
+    # # mpimg.imsave('output_images/windows_img192', windows_img192)
+    #
+    # windows256 = generate_windows_list(img, x_start_stop=[340, None], y_start_stop=[300, 550],
+    #                                   xy_window=(256, 256), xy_overlap=xy_overlap)
+    #
+    # if DEBUG_MODE:
+    #     windows_img256 = draw_boxes_on_image(img.astype(np.float32)/255, [windows256[0]], color=(0, 0, 1), thick=4)
+    #     windows_img256 = draw_boxes_on_image(windows_img256, windows256, color=(0, 0, 1), thick=1)
+    #     mpimg.imsave('output_images/windows_img256' + annotation, windows_img256)
+    #
+    # windows = windows64 + windows128 + windows256
+    #
+    # hot_windows = search_windows(img.astype(np.float32)/255,
+    #                              windows,
+    #                              svc,
+    #                              X_scaler,
+    #                              color_space=color_space,
+    #                              spatial_size=spatial_size,
+    #                              hist_bins=histogram_bins,
+    #                              orient=orientation,
+    #                              pix_per_cell=num_pix_per_cell,
+    #                              cell_per_block=num_cell_per_block,
+    #                              hog_channel=hog_channel_select,
+    #                              use_spatial_feat=use_spatial_features,
+    #                              use_hist_feat=use_hist_features,
+    #                              use_hog_feat=use_hog_features)
+    # if DEBUG_MODE:
+    #     pos_windows_img = draw_boxes_on_image(np.copy(img), hot_windows, color=(0, 0, 1), thick=6)
+    #     mpimg.imsave('output_images/pos_windows_img' + annotation, pos_windows_img)
+    #
+    # heatmap = np.zeros_like(img[:, :, 0]).astype(np.float)
+    # heatmap = add_heat(heatmap, hot_windows)
 
-    windows256 = generate_windows_list(img, x_start_stop=[340, None], y_start_stop=[300, 550],
-                                      xy_window=(256, 256), xy_overlap=xy_overlap)
+    pos_windows_img64, heatmap64 = find_cars(img,
+                                         svc,
+                                         X_scaler,
+                                         color_space=color_space,
+                                         spatial_size=spatial_size,
+                                         hist_bins=histogram_bins,
+                                         scale=1,
+                                         cells_per_step=2,
+                                         x_start_stop=[475, None],
+                                         y_start_stop=[400, 656],
+                                         orient=orientation,
+                                         pix_per_cell=num_pix_per_cell,
+                                         cell_per_block=num_cell_per_block)
+
+    pos_windows_img128, heatmap128 = find_cars(img,
+                                         svc,
+                                         X_scaler,
+                                         color_space=color_space,
+                                         spatial_size=spatial_size,
+                                         hist_bins=histogram_bins,
+                                         scale=1.5,
+                                         cells_per_step=2,
+                                         x_start_stop=[475, None],
+                                         y_start_stop=[400, 656],
+                                         orient=orientation,
+                                         pix_per_cell=num_pix_per_cell,
+                                         cell_per_block=num_cell_per_block)
 
     if DEBUG_MODE:
-        windows_img256 = draw_boxes_on_image(img.astype(np.float32)/255, [windows256[0]], color=(0, 0, 1), thick=4)
-        windows_img256 = draw_boxes_on_image(windows_img256, windows256, color=(0, 0, 1), thick=1)
-        mpimg.imsave('output_images/windows_img256' + annotation, windows_img256)
+        mpimg.imsave('output_images/pos_windows_img64' + annotation, pos_windows_img64)
+        mpimg.imsave('output_images/pos_windows_img128' + annotation, pos_windows_img128)
 
-    windows = windows64 + windows128 + windows256
-
-    hot_windows = search_windows(img.astype(np.float32)/255,
-                                 windows,
-                                 svc,
-                                 X_scaler,
-                                 color_space=color_space,
-                                 spatial_size=spatial_size,
-                                 hist_bins=histogram_bins,
-                                 orient=orientation,
-                                 pix_per_cell=num_pix_per_cell,
-                                 cell_per_block=num_cell_per_block,
-                                 hog_channel=hog_channel_select,
-                                 use_spatial_feat=use_spatial_features,
-                                 use_hist_feat=use_hist_features,
-                                 use_hog_feat=use_hog_features)
-    if DEBUG_MODE:
-        pos_windows_img = draw_boxes_on_image(np.copy(img), hot_windows, color=(0, 0, 1), thick=6)
-        mpimg.imsave('output_images/pos_windows_img' + annotation, pos_windows_img)
-
-    heatmap = np.zeros_like(img[:, :, 0]).astype(np.float)
-    heatmap = add_heat(heatmap, hot_windows)
-
+    heatmap = heatmap64 + heatmap128
     tracer.update(heatmap)
 
 
@@ -424,7 +532,7 @@ def process_image(img):
 
 if __name__ == "__main__":
 
-    PIPELINE_VIDEO = False
+    PIPELINE_VIDEO = True
     DEBUG_MODE = True#not(PIPELINE_VIDEO)
 
     data_file = 'ClassifierData.p'
@@ -448,13 +556,14 @@ if __name__ == "__main__":
     if PIPELINE_VIDEO:
         tracer = Tracing_algorithm(3)
         white_output = 'project_video_processed.mp4'
-        clip1 = VideoFileClip("project_video.mp4").subclip(39,43)
+        clip1 = VideoFileClip("test_video.mp4")
+        # clip1 = VideoFileClip("project_video.mp4").subclip(0,1)
         white_clip = clip1.fl_image(process_image)
         white_clip.write_videofile(white_output, audio=False)
 
     else:
         tracer = Tracing_algorithm(1)
-        fname = 'test_images/test1.jpg'
+        fname = 'test_images/test2.jpg'
         image = mpimg.imread(fname)
         # image = image.astype(np.float32)/255
 
