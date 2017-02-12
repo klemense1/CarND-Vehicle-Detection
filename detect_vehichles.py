@@ -13,10 +13,18 @@ from train_classifier import change_color_space, get_bin_spatial, get_color_hist
 from moviepy.editor import VideoFileClip
 
 class Car():
-    def __init__(self, queuelength, confidence_threshold, initial_position):
-        self.recent_positions = [initial_position]
-        self.position = initial_position
-        self.boundingbox = []
+    def __init__(self, queuelength, confidence_threshold, initial_coordinates):
+
+        self.position = [initial_coordinates[0], initial_coordinates[1]]
+        self.recent_positions = [self.position]
+
+        self.height = initial_coordinates[2]
+        self.recent_heights = [self.height]
+
+        self.width = initial_coordinates[3]
+        self.recent_widths = [self.width]
+
+        self.boundingbox = ((int(self.position[0]-self.height/2), int(self.position[1]-self.width/2)), (int(self.position[0]+self.height/2), int(self.position[1]+self.width/2)))
         self.validated = False
         self.tracked_frames = [1]
         self.queuelength = queuelength
@@ -25,13 +33,25 @@ class Car():
         self.to_delete = False
         self.buffer = 0
 
-    def found_again(self, new_position):
+    def found_again(self, new_coordinates):
         if self.buffer == self.queuelength:
             self.tracked_frames.pop(0)
             self.recent_positions.pop(0)
+            self.recent_heights.pop(0)
+            self.recent_widths.pop(0)
+
         self.tracked_frames.append(1)
-        self.recent_positions.append(new_position)
+
+        self.recent_positions.append([new_coordinates[0], new_coordinates[1]])
         self.position = np.mean(self.recent_positions, axis=0).astype(int)
+
+        self.recent_heights.append(new_coordinates[2])
+        self.height = np.mean(self.recent_heights).astype(int)
+
+        self.recent_widths.append(new_coordinates[3])
+        self.width = np.mean(self.recent_widths).astype(int)
+
+        self.boundingbox = ((int(self.position[0]-self.height/2), int(self.position[1]-self.width/2)), (int(self.position[0]+self.height/2), int(self.position[1]+self.width/2)))
 
         if sum(self.tracked_frames) > self.confidence_threshold:
             self.validated = True
@@ -44,6 +64,9 @@ class Car():
 
         if self.buffer == self.queuelength:
             self.tracked_frames.pop(0)
+            # self.recent_positions.pop(0)
+            # self.recent_heights.pop(0)
+            # self.recent_widths.pop(0)
 
         self.tracked_frames.append(0)
 
@@ -67,7 +90,7 @@ class Tracing_algorithm():
 
         self.buffer = 0
 
-        self.center_of_found_cars = []
+        self.coord_of_found_cars = []
 
         self.labels = None
 
@@ -85,9 +108,10 @@ class Tracing_algorithm():
         self.recent_heatmaps.append(self.current_heatmap)
         self.buffer = len(self.recent_heatmaps)
 
-    def set_vehicles_positions(self):
+    def set_vehicles_coordinates(self):
 
-        positions = []
+        coordinates = []
+
         for car_number in range(1, self.number_of_found_cars + 1):
             # Find pixels with each car_number label value
             nonzero = (self.binary_map == car_number).nonzero()
@@ -96,11 +120,14 @@ class Tracing_algorithm():
             nonzeroy = np.array(nonzero[0])
             nonzerox = np.array(nonzero[1])
 
-            x = int(np.mean([np.min(nonzerox), np.max(nonzerox)]))
-            y = int(np.mean([np.min(nonzeroy), np.max(nonzeroy)]))
-            positions.append([x, y])
+            x_min_max = [np.min(nonzerox), np.max(nonzerox)]
+            y_min_max = [np.min(nonzeroy), np.max(nonzeroy)]
 
-        self.center_of_found_cars = positions
+            coordinates.append([int(np.mean(x_min_max)), int(np.mean(y_min_max)), int(x_min_max[1]-x_min_max[0]), int(y_min_max[1]-y_min_max[0])])
+
+        self.coord_of_found_cars = coordinates
+
+
 
     def update_car_list(self):
         found_cars_mathed = [False]*self.number_of_found_cars
@@ -108,35 +135,52 @@ class Tracing_algorithm():
 
         for car in self.list_of_cars:
             car_found = False
-            for idx_center, center in enumerate(self.center_of_found_cars):
-                distance = np.sqrt(np.square(center[0]-car.position[0]) + np.square(center[1]-car.position[1]))
+            for idx, coordinates in enumerate(self.coord_of_found_cars):
+
+                distance = np.sqrt(np.square(coordinates[0]-car.position[0]) + np.square(coordinates[1]-car.position[1]))
                 print('Distance', distance)
                 if distance < 100:
                     print('You have a match')
-                    found_cars_mathed[idx_center] = True
+                    found_cars_mathed[idx] = True
                     car_found = True
 
-                    car.found_again(center)
-                    new_car_list.append(car)
+                    car.found_again(coordinates)
+                    if car.car_id not in [excar.car_id for excar in new_car_list]:
+                        new_car_list.append(car)
             if not car_found:
                 car.not_found()
                 if not car.to_delete:
                     new_car_list.append(car)
 
         print('found_cars_mathed', found_cars_mathed)
-        print('self.center_of_found_cars', self.center_of_found_cars)
+        print('self.coord_of_found_cars', self.coord_of_found_cars)
 
         self.list_of_cars = new_car_list
 
-        for idx_center, center in enumerate(self.center_of_found_cars):
-            if found_cars_mathed[idx_center] == False:
-                print('Creating new car instance at', center)
-                new_car = Car(5, 3, center)
-                self.list_of_cars.append(new_car)
+        boundingboxes = [cars.boundingbox for cars in new_car_list]
+        print('boundingboxes', boundingboxes)
+
+        for idx, coordinates in enumerate(self.coord_of_found_cars):
+            if found_cars_mathed[idx] == False:
+                # check wether shape makes sense
+                ratio_height_width = coordinates[2]/coordinates[3]
+                if ratio_height_width > 0.2 and ratio_height_width < 2:
+                    overlap=False
+                    for bbox in boundingboxes:
+                        if coordinates[0] > bbox[0][0] and coordinates[0] < bbox[1][0] and coordinates[1] > bbox[0][1] and coordinates[1] < bbox[1][1]:
+                            overlap = True
+                    if not overlap:
+                        print('Creating new car instance at', coordinates)
+                        new_car = Car(5, 3, coordinates)
+                        self.list_of_cars.append(new_car)
+                    else:
+                        print('Merged window with previous one')
+                else:
+                    print('detected shape not plausible')
 
     def extract_vehicles(self):
 
-        heatmap_threshed = apply_threshold(self.avg_heatmap, 6)
+        heatmap_threshed = apply_threshold(self.avg_heatmap, 8)
 
         labels = label(heatmap_threshed)
         self.binary_map = labels[0]
@@ -169,11 +213,11 @@ class Tracing_algorithm():
 
         self.extract_vehicles()
 
-        self.set_vehicles_positions()
+        self.set_vehicles_coordinates()
 
         print('Extracting_vehicles()...')
         print('number_of_found_cars', self.number_of_found_cars)
-        print('center_of_found_cars', self.center_of_found_cars)
+        print('coord_of_found_cars', self.coord_of_found_cars)
 
         self.update_car_list()
 
@@ -184,8 +228,11 @@ class Tracing_algorithm():
             print('   tracked_frames', car.tracked_frames)
 
 
-def generate_windows_list(img, x_start_stop=[None, None], y_start_stop=[None, None],
-                          xy_window=(64, 64), xy_overlap=(0.5, 0.5)):
+def generate_windows_list(img,
+                          x_start_stop=[None, None],
+                          y_start_stop=[None, None],
+                          xy_window=(64, 64),
+                          xy_overlap=(0.5, 0.5)):
     """
     takes an image and generates list of windows to be searched in
     """
@@ -226,9 +273,19 @@ def generate_windows_list(img, x_start_stop=[None, None], y_start_stop=[None, No
     return window_list
 
 
-def find_cars(img, clf, scaler, color_space='RGB',
-                   spatial_size=(32, 32), hist_bins=32, scale=1, cells_per_step=2, x_start_stop=[None, None], y_start_stop=[None, None], orient=9,
-            pix_per_cell=8, cell_per_block=2):
+def find_cars(img,
+              clf,
+              scaler,
+              color_space='RGB',
+              spatial_size=(32, 32),
+              hist_bins=32,
+              scale=1,
+              cells_per_step=2,
+              x_start_stop=[None, None],
+              y_start_stop=[None, None],
+              orient=9,
+              pix_per_cell=8,
+              cell_per_block=2):
     """
     cells_per_step ... instead of overlap, define how many cells to step
     """
@@ -419,13 +476,6 @@ def detect(img):
     #     mpimg.imsave('output_images/windows_img128' + annotation, windows_img128)
     #
     #
-    # # windows192 = generate_windows_list(img, x_start_stop=[300, None], y_start_stop=[275, 650],
-    # #                                   xy_window=(192, 192), xy_overlap=xy_overlap)
-    # #
-    # # windows_img192 = draw_boxes_on_image(np.copy(img), [windows192[0]], color=(0, 0, 255), thick=4)
-    # # windows_img192 = draw_boxes_on_image(windows_img192, windows192, color=(0, 0, 255), thick=1)
-    # # mpimg.imsave('output_images/windows_img192', windows_img192)
-    #
     # windows256 = generate_windows_list(img, x_start_stop=[340, None], y_start_stop=[300, 550],
     #                                   xy_window=(256, 256), xy_overlap=xy_overlap)
     #
@@ -451,7 +501,7 @@ def detect(img):
     #                              use_hist_feat=use_hist_features,
     #                              use_hog_feat=use_hog_features)
     # if DEBUG_MODE:
-    #     pos_windows_img = draw_boxes_on_image(np.copy(img), hot_windows, color=(0, 0, 1), thick=6)
+    #     pos_windows_img = draw_boxes_on_image(img.astype(np.float32)/255, hot_windows, color=(0, 0, 1), thick=6)
     #     mpimg.imsave('output_images/pos_windows_img' + annotation, pos_windows_img)
     #
     # heatmap = np.zeros_like(img[:, :, 0]).astype(np.float)
@@ -486,21 +536,21 @@ def detect(img):
                                          cell_per_block=num_cell_per_block)
 
     if DEBUG_MODE:
-        mpimg.imsave('output_images/pos_windows_img64' + annotation, pos_windows_img64)
-        mpimg.imsave('output_images/pos_windows_img128' + annotation, pos_windows_img128)
+        mpimg.imsave('output_images/pos_windowsALL_img64' + annotation, pos_windows_img64)
+        mpimg.imsave('output_images/pos_windowsALL_img128' + annotation, pos_windows_img128)
 
     heatmap = heatmap64 + heatmap128
     tracer.update(heatmap)
 
 
     if DEBUG_MODE:
-        mpimg.imsave('output_images/heatmap' + annotation, heatmap, cmap='gray')
-        mpimg.imsave('output_images/heatmap_current' + annotation, tracer.current_heatmap, cmap='gray')
-        mpimg.imsave('output_images/heatmap_average' + annotation, tracer.avg_heatmap, cmap='gray')
+        mpimg.imsave('output_images/heatmap' + annotation, heatmap, cmap='hot')
+        mpimg.imsave('output_images/heatmap_current' + annotation, tracer.current_heatmap, cmap='hot')
+        mpimg.imsave('output_images/heatmap_average' + annotation, tracer.avg_heatmap, cmap='hot')
 
         print(tracer.number_of_found_cars, 'cars found')
 
-        mpimg.imsave('output_images/labelling' + annotation, tracer.binary_map, cmap='gray')
+        mpimg.imsave('output_images/labelling' + annotation, tracer.binary_map, cmap='hot')
 
     # detected_cars_img = draw_boxes_cars(np.copy(img), tracer)
 
@@ -508,8 +558,8 @@ def detect(img):
     detected_cars_img = np.copy(img)
     for car in tracer.list_of_cars:
         if car.validated:
-            print('Position', car.position)
-            cv2.circle(detected_cars_img, tuple(car.position), 7,255,-1)
+            cv2.circle(detected_cars_img, tuple(car.position), 7, 255, -1)
+            cv2.rectangle(detected_cars_img, car.boundingbox[0], car.boundingbox[1], (0, 0, 255), 6)
 
     font = cv2.FONT_HERSHEY_SIMPLEX
 
@@ -532,7 +582,7 @@ def process_image(img):
 
 if __name__ == "__main__":
 
-    PIPELINE_VIDEO = False
+    PIPELINE_VIDEO = True
     DEBUG_MODE = True#not(PIPELINE_VIDEO)
 
     data_file = 'ClassifierData.p'
@@ -556,14 +606,14 @@ if __name__ == "__main__":
     if PIPELINE_VIDEO:
         tracer = Tracing_algorithm(3)
         white_output = 'project_video_processed.mp4'
-        clip1 = VideoFileClip("test_video.mp4")
-        # clip1 = VideoFileClip("project_video.mp4").subclip(0,1)
+        clip1 = VideoFileClip("test_video.mp4").subclip(0,1)
+        # clip1 = VideoFileClip("project_video.mp4")#.subclip(0,10)
         white_clip = clip1.fl_image(process_image)
         white_clip.write_videofile(white_output, audio=False)
 
     else:
         tracer = Tracing_algorithm(1)
-        fname = 'test_images/test2.jpg'
+        fname = 'test_images/test4.jpg'
         image = mpimg.imread(fname)
         # image = image.astype(np.float32)/255
 
