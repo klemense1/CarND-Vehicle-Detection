@@ -242,11 +242,11 @@ if __name__ == "__main__":
     path_notcars = '/Users/Klemens/Udacity_Nano_Car/P5_labeled_data/non-vehicles'
     cars = [os.path.join(dirpath, f) for dirpath, dirnames, files in os.walk(path_cars) for f in files if f.endswith('.png')]
     notcars = [os.path.join(dirpath, f) for dirpath, dirnames, files in os.walk(path_notcars) for f in files if f.endswith('.png')]
-    VISUALIZE=True
+    VISUALIZE = False
 
 
-    cars = cars[10:20]
-    notcars = notcars[10:20]
+    cars = cars#[10:20]
+    notcars = notcars#[10:20]
 
     # cars_train, cars_test, no_train, no_test = read_in_data.read_in_seperately(path_cars, path_notcars)
     color_space = 'HLS'  # Can be RGB, HSV, LUV, HLS, YUV, YCrCb
@@ -296,7 +296,7 @@ if __name__ == "__main__":
                                                     use_spatial_feat=use_spatial_features,
                                                     use_hist_feat=use_hist_features,
                                                     use_hog_feat=use_hog_features,
-                                                    visualize=True)
+                                                    visualize=False)
 
     #
 
@@ -334,7 +334,7 @@ if __name__ == "__main__":
     print('Train Accuracy of SVC = ', round(svc.score(X_train, y_train), 4))
     print('Test Accuracy of SVC = ', round(svc.score(X_test, y_test), 4))
 
-    pickle_file = 'ClassifierData_HLS.p'
+    pickle_file = 'ClassifierData.p'
     print('Saving data to pickle file...')
 
     try:

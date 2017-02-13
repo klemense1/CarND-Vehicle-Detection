@@ -12,6 +12,8 @@ from train_classifier import change_color_space, get_bin_spatial, get_color_hist
 
 from moviepy.editor import VideoFileClip
 
+DEBUG_MODE = True
+
 class Car():
     def __init__(self, queuelength, confidence_threshold, initial_coordinates):
 
@@ -53,7 +55,7 @@ class Car():
 
         self.boundingbox = ((int(self.position[0]-self.height/2), int(self.position[1]-self.width/2)), (int(self.position[0]+self.height/2), int(self.position[1]+self.width/2)))
 
-        if sum(self.tracked_frames) > self.confidence_threshold:
+        if sum(self.tracked_frames) >= self.confidence_threshold:
             self.validated = True
         else:
             self.validated = False
@@ -64,13 +66,10 @@ class Car():
 
         if self.buffer == self.queuelength:
             self.tracked_frames.pop(0)
-            # self.recent_positions.pop(0)
-            # self.recent_heights.pop(0)
-            # self.recent_widths.pop(0)
 
         self.tracked_frames.append(0)
 
-        if sum(self.tracked_frames) < 0.2:
+        if np.mean(self.tracked_frames) < 0.3:
             self.to_delete = True
 
         self.buffer = len(self.tracked_frames)
@@ -101,7 +100,9 @@ class Tracing_algorithm():
         self.list_of_cars = []
 
     def add_heatmap_to_buffer(self):
-
+        """
+        adds heatmap to recent_heatmaps list
+        """
         if self.buffer == self.queuelength:
             self.recent_heatmaps.pop(0)
 
@@ -109,7 +110,9 @@ class Tracing_algorithm():
         self.buffer = len(self.recent_heatmaps)
 
     def set_vehicles_coordinates(self):
-
+        """
+        sets center, width and height from binary_map
+        """
         coordinates = []
 
         for car_number in range(1, self.number_of_found_cars + 1):
@@ -127,81 +130,116 @@ class Tracing_algorithm():
 
         self.coord_of_found_cars = coordinates
 
+    def get_closest_car(self, coord):
+        dist = np.empty(shape=(len(self.list_of_cars), 2))
+        for idx, car in enumerate(self.list_of_cars):
+            dist[idx, 0] = car.car_id
+            dist[idx, 1] = np.sqrt(np.square(coord[0]-car.position[0]) + np.square(coord[1]-car.position[1]))
 
+        min_idx = dist[:, 1].argmin()
+        closest_dist = dist[min_idx, 1]
+        closest_car_id = dist[min_idx, 0]
+
+        return closest_car_id, closest_dist
+
+    def get_car(self, car_id):
+        for car in self.list_of_cars:
+            if car.car_id == car_id:
+                return_car = car
+
+        return return_car
+
+    def check_for_overlap(self, coord):
+        boundingboxes = [cars.boundingbox for cars in self.list_of_cars]
+        is_overlapping = False
+
+        for bbox in boundingboxes:
+            within_x_coordinates = coord[0] > bbox[0][0] and coord[0] < bbox[1][0]
+            within_y_coordinates = coord[1] > bbox[0][1] and coord[1] < bbox[1][1]
+            if within_x_coordinates and within_y_coordinates:
+                is_overlapping = True
+
+        return is_overlapping
 
     def update_car_list(self):
-        found_cars_mathed = [False]*self.number_of_found_cars
-        new_car_list = []
+        found_cars_matched = []
+        coord_to_create_car_from = []
 
-        for car in self.list_of_cars:
-            car_found = False
+        if len(self.list_of_cars) > 0:
+            # check for matches
             for idx, coordinates in enumerate(self.coord_of_found_cars):
+                closest_car_id, closest_dist = self.get_closest_car(coordinates)
 
-                distance = np.sqrt(np.square(coordinates[0]-car.position[0]) + np.square(coordinates[1]-car.position[1]))
-                print('Distance', distance)
-                if distance < 100:
-                    print('You have a match')
-                    found_cars_mathed[idx] = True
-                    car_found = True
+                print('Distance', closest_dist)
 
-                    car.found_again(coordinates)
-                    if car.car_id not in [excar.car_id for excar in new_car_list]:
-                        new_car_list.append(car)
-            if not car_found:
-                car.not_found()
+                if closest_dist < 50:
+                    if closest_car_id not in found_cars_matched:
+
+                        print('You have a match')
+
+                        found_cars_matched.append(closest_car_id)
+                        car = self.get_car(closest_car_id)
+                        car.found_again(coordinates)
+                else:
+                    coord_to_create_car_from.append(coordinates)
+
+            # mark car objects that were not found
+            for car in self.list_of_cars:
+                if car.car_id not in found_cars_matched:
+                    car.not_found()
+
+            # delete objects
+            new_car_list = []
+            for car in self.list_of_cars:
                 if not car.to_delete:
                     new_car_list.append(car)
 
-        print('found_cars_mathed', found_cars_mathed)
-        print('self.coord_of_found_cars', self.coord_of_found_cars)
+            self.list_of_cars = new_car_list
+        else:
+            coord_to_create_car_from = self.coord_of_found_cars
 
-        self.list_of_cars = new_car_list
+        # add new objects
+        for coord in coord_to_create_car_from:
+            ratio_height_width = coord[2]/coord[3]
 
-        boundingboxes = [cars.boundingbox for cars in new_car_list]
-        print('boundingboxes', boundingboxes)
-
-        for idx, coordinates in enumerate(self.coord_of_found_cars):
-            if found_cars_mathed[idx] == False:
-                # check wether shape makes sense
-                ratio_height_width = coordinates[2]/coordinates[3]
-                if ratio_height_width > 0.2 and ratio_height_width < 2:
-                    overlap=False
-                    for bbox in boundingboxes:
-                        if coordinates[0] > bbox[0][0] and coordinates[0] < bbox[1][0] and coordinates[1] > bbox[0][1] and coordinates[1] < bbox[1][1]:
-                            overlap = True
-                    if not overlap:
-                        print('Creating new car instance at', coordinates)
-                        new_car = Car(5, 3, coordinates)
-                        self.list_of_cars.append(new_car)
-                    else:
-                        print('Merged window with previous one')
+            if ratio_height_width > 0.2 and ratio_height_width < 2:
+                if not self.check_for_overlap(coord):
+                    print('Creating new car instance at', coord)
+                    new_car = Car(6, 6, coord)
+                    self.list_of_cars.append(new_car)
                 else:
-                    print('detected shape not plausible')
+                    print('Merged window with previous one')
+            else:
+                print('detected shape not plausible')
+
 
     def extract_vehicles(self):
-
-        heatmap_threshed = apply_threshold(self.avg_heatmap, 8)
+        """
+        Extracts boundingboxes and vehicle position from heatmap.
+        """
+        heatmap_threshed = apply_threshold(self.avg_heatmap, 7)
 
         labels = label(heatmap_threshed)
         self.binary_map = labels[0]
         self.number_of_found_cars = labels[1]
 
     def set_average_heatmap(self):
-
+        """
+        Averages heatmap. Uses higher weightings for more recent heatmaps
+        """
         if self.buffer == 1:
-            # prev_heatmap * heatmap_factor + heatmap_image * (1 - heatmap_factor) #
+
             self.avg_heatmap = self.recent_heatmaps[0]
         else:
             weightings = np.linspace(1, self.buffer, self.buffer)
             weightings_norm = weightings/sum(weightings)
-            # print('Weightings:', weightings_norm)
-            img_array = np.array(self.recent_heatmaps).T
-            # print('img_array.shape', img_array.shape)
-            self.avg_heatmap = img_array.dot(np.array(weightings)).T
-            # print('self.avg_heatmap.shape', self.avg_heatmap.shape)
+
+            heatmap_array = np.array(self.recent_heatmaps).T
+
+            self.avg_heatmap = heatmap_array.dot(np.array(weightings)).T
+
 
     def update(self, heatmp):
-        print('###\nNew frame\n###')
 
         self.frame += 1
 
@@ -215,6 +253,7 @@ class Tracing_algorithm():
 
         self.set_vehicles_coordinates()
 
+        print('###\nNew frame\n###')
         print('Extracting_vehicles()...')
         print('number_of_found_cars', self.number_of_found_cars)
         print('coord_of_found_cars', self.coord_of_found_cars)
@@ -229,10 +268,10 @@ class Tracing_algorithm():
 
 
 def generate_windows_list(img,
-                          x_start_stop=[None, None],
-                          y_start_stop=[None, None],
-                          xy_window=(64, 64),
-                          xy_overlap=(0.5, 0.5)):
+                          x_start_stop,
+                          y_start_stop,
+                          xy_window,
+                          xy_overlap):
     """
     takes an image and generates list of windows to be searched in
     """
@@ -276,16 +315,16 @@ def generate_windows_list(img,
 def find_cars(img,
               clf,
               scaler,
-              color_space='RGB',
-              spatial_size=(32, 32),
-              hist_bins=32,
-              scale=1,
-              cells_per_step=2,
-              x_start_stop=[None, None],
-              y_start_stop=[None, None],
-              orient=9,
-              pix_per_cell=8,
-              cell_per_block=2):
+              color_space,
+              spatial_size,
+              hist_bins,
+              scale,
+              cells_per_step,
+              x_start_stop,
+              y_start_stop,
+              orient,
+              pix_per_cell,
+              cell_per_block):
     """
     cells_per_step ... instead of overlap, define how many cells to step
     """
@@ -300,7 +339,7 @@ def find_cars(img,
     # color transformed image
     ctrans_to_search = change_color_space(img_to_search, colorspace=color_space)
 
-    if scale != 1: # use this as window size
+    if scale != 1:
         imshape = ctrans_to_search.shape
         ctrans_to_search = cv2.resize(ctrans_to_search, (np.int(imshape[1]/scale), np.int(imshape[0]/scale)))
 
@@ -352,18 +391,25 @@ def find_cars(img,
                 ytop_draw = np.int(ytop*scale)
                 win_draw = np.int(window*scale)
                 cv2.rectangle(draw_img, (xbox_left+x_start_stop[0], ytop_draw+y_start_stop[0]), (xbox_left+win_draw+x_start_stop[0], ytop_draw+win_draw+y_start_stop[0]), (0,0,255), 6)
-                # img_boxes.append(((xbox_left, ytop_draw+y_start_stop[0]), (xbox_left+win_draw, ytop_draw+win_draw+y_start_stop[0])))
                 heatmap[ytop_draw+y_start_stop[0]:ytop_draw+win_draw+y_start_stop[0], xbox_left+x_start_stop[0]:xbox_left+win_draw+x_start_stop[0]] += 1
 
     return draw_img, heatmap
 
 
-def search_windows(img, windows_list, clf, scaler, color_space='RGB',
-                   spatial_size=(32, 32), hist_bins=32,
-                   hist_range=(0, 256), orient=9,
-                   pix_per_cell=8, cell_per_block=2,
-                   hog_channel=0, use_spatial_feat=True,
-                   use_hist_feat=True, use_hog_feat=True):
+def search_windows(img,
+                   windows_list,
+                   clf,
+                   scaler,
+                   color_space='RGB',
+                   spatial_size=(32, 32),
+                   hist_bins=32,
+                   orient=9,
+                   pix_per_cell=8,
+                   cell_per_block=2,
+                   hog_channel=0,
+                   use_spatial_feat=True,
+                   use_hist_feat=True,
+                   use_hog_feat=True):
     """
     For each window in windows_list, features are extracted and fed into
     classifier. If classified as a car, it is kept and finally returned.
@@ -457,55 +503,6 @@ def detect(img):
     global tracer
 
     annotation = '_frame' + str(tracer.frame)
-    # xy_overlap = (0.8, 0.8)
-    # windows64 = generate_windows_list(img, x_start_stop=[475, 1200], y_start_stop=[360, 480],
-    #                                   xy_window=(64, 64), xy_overlap=xy_overlap)
-    #
-    # if DEBUG_MODE:
-    #     windows_img64 = draw_boxes_on_image(img.astype(np.float32)/255, [windows64[0]], color=(0, 0, 1), thick=4)
-    #     windows_img64 = draw_boxes_on_image(windows_img64, windows64, color=(0, 0, 1), thick=1)
-    #     mpimg.imsave('output_images/windows_img64' + annotation, windows_img64)
-    #
-    #
-    # windows128 = generate_windows_list(img, x_start_stop=[400, 1200], y_start_stop=[340, 530],
-    #                                   xy_window=(128, 128), xy_overlap=xy_overlap)
-    #
-    # if DEBUG_MODE:
-    #     windows_img128 = draw_boxes_on_image(img.astype(np.float32)/255, [windows128[0]], color=(0, 0, 1), thick=4)
-    #     windows_img128 = draw_boxes_on_image(windows_img128, windows128, color=(0, 0, 1), thick=1)
-    #     mpimg.imsave('output_images/windows_img128' + annotation, windows_img128)
-    #
-    #
-    # windows256 = generate_windows_list(img, x_start_stop=[340, None], y_start_stop=[300, 550],
-    #                                   xy_window=(256, 256), xy_overlap=xy_overlap)
-    #
-    # if DEBUG_MODE:
-    #     windows_img256 = draw_boxes_on_image(img.astype(np.float32)/255, [windows256[0]], color=(0, 0, 1), thick=4)
-    #     windows_img256 = draw_boxes_on_image(windows_img256, windows256, color=(0, 0, 1), thick=1)
-    #     mpimg.imsave('output_images/windows_img256' + annotation, windows_img256)
-    #
-    # windows = windows64 + windows128 + windows256
-    #
-    # hot_windows = search_windows(img.astype(np.float32)/255,
-    #                              windows,
-    #                              svc,
-    #                              X_scaler,
-    #                              color_space=color_space,
-    #                              spatial_size=spatial_size,
-    #                              hist_bins=histogram_bins,
-    #                              orient=orientation,
-    #                              pix_per_cell=num_pix_per_cell,
-    #                              cell_per_block=num_cell_per_block,
-    #                              hog_channel=hog_channel_select,
-    #                              use_spatial_feat=use_spatial_features,
-    #                              use_hist_feat=use_hist_features,
-    #                              use_hog_feat=use_hog_features)
-    # if DEBUG_MODE:
-    #     pos_windows_img = draw_boxes_on_image(img.astype(np.float32)/255, hot_windows, color=(0, 0, 1), thick=6)
-    #     mpimg.imsave('output_images/pos_windows_img' + annotation, pos_windows_img)
-    #
-    # heatmap = np.zeros_like(img[:, :, 0]).astype(np.float)
-    # heatmap = add_heat(heatmap, hot_windows)
 
     pos_windows_img64, heatmap64 = find_cars(img,
                                          svc,
@@ -528,7 +525,7 @@ def detect(img):
                                          spatial_size=spatial_size,
                                          hist_bins=histogram_bins,
                                          scale=1.5,
-                                         cells_per_step=2,
+                                         cells_per_step=3,
                                          x_start_stop=[475, None],
                                          y_start_stop=[400, 656],
                                          orient=orientation,
@@ -539,12 +536,13 @@ def detect(img):
         mpimg.imsave('output_images/pos_windowsALL_img64' + annotation, pos_windows_img64)
         mpimg.imsave('output_images/pos_windowsALL_img128' + annotation, pos_windows_img128)
 
-    heatmap = heatmap64 + heatmap128
-    tracer.update(heatmap)
+    heatmap_combined = heatmap64 + heatmap128
+
+    tracer.update(heatmap_combined)
 
 
     if DEBUG_MODE:
-        mpimg.imsave('output_images/heatmap' + annotation, heatmap, cmap='hot')
+        mpimg.imsave('output_images/heatmap' + annotation, heatmap_combined, cmap='hot')
         mpimg.imsave('output_images/heatmap_current' + annotation, tracer.current_heatmap, cmap='hot')
         mpimg.imsave('output_images/heatmap_average' + annotation, tracer.avg_heatmap, cmap='hot')
 
@@ -569,21 +567,20 @@ def detect(img):
     if DEBUG_MODE:
         mpimg.imsave('output_images/detected_cars_img' + annotation, detected_cars_img)
 
-    return detected_cars_img
+    return detected_cars_img, heatmap_combined, pos_windows_img64, pos_windows_img128
 
 
 def process_image(img):
 
     global tracer
 
-    img_processed = detect(img)
+    img_processed, __, __, __ = detect(img)
 
     return img_processed
 
 if __name__ == "__main__":
 
     PIPELINE_VIDEO = True
-    DEBUG_MODE = True#not(PIPELINE_VIDEO)
 
     data_file = 'ClassifierData.p'
     with open(data_file, mode='rb') as f:
@@ -606,15 +603,27 @@ if __name__ == "__main__":
     if PIPELINE_VIDEO:
         tracer = Tracing_algorithm(3)
         white_output = 'project_video_processed.mp4'
-        clip1 = VideoFileClip("test_video.mp4").subclip(0,1)
-        # clip1 = VideoFileClip("project_video.mp4")#.subclip(0,10)
+        clip1 = VideoFileClip("test_video.mp4")
+        # clip1 = VideoFileClip("project_video.mp4")
         white_clip = clip1.fl_image(process_image)
         white_clip.write_videofile(white_output, audio=False)
 
     else:
         tracer = Tracing_algorithm(1)
-        fname = 'test_images/test4.jpg'
-        image = mpimg.imread(fname)
-        # image = image.astype(np.float32)/255
+        filelist = ['test_images/test1.jpg', 'test_images/test2.jpg', 'test_images/test3.jpg', 'test_images/test4.jpg', 'test_images/test5.jpg']
+        plt.figure(figsize=(12,16))
+        for i, fname in enumerate(filelist):
+        # fname = 'test_images/test4.jpg'
+            image = mpimg.imread(fname)
 
-        img_detected_vehicle = process_image(image)
+            img_detected_vehicle, heatmap, pos_windows64, pos_windows128 = detect(image)
+            plt.subplot(len(filelist), 3, i*3+1)
+            plt.imshow(image)
+            plt.title('Image')
+            plt.subplot(len(filelist), 3, i*3+2)
+            plt.imshow(pos_windows64)
+            plt.title('Positive Windows 64x64')
+            plt.subplot(len(filelist), 3, i*3+3)
+            plt.imshow(pos_windows128)
+            plt.title('Positive Windows 128x128')
+            plt.savefig('output_images/pipeline', dpi=150)
