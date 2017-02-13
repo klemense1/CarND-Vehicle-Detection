@@ -160,7 +160,7 @@ It creates a list of windows wich are then applied to a given image to extract f
 Certainly, only one window size does not prove to be sufficient, so I played around with both windows size and the overlap. Also, I cutted off regions that where not of interest and would only cause additional computation time or worse: False positives.
 
 In the following, I am showing the area that was searched by the sliding windows. In a bolder frame, the size of the window can be seen (which, due to the overlap, might be not that obvious)
-###### Sliding Windows Search 64x64, 80% Overlap
+##### Sliding Windows Search 64x64, 80% Overlap
 
 [image_windows64]: ./Writeup/Image_Processing/windows_img64_frame0.png "Sliding Windows Search"
 ![alt text][image_windows64]
