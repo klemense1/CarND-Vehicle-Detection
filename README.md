@@ -161,15 +161,18 @@ Certainly, only one window size does not prove to be sufficient, so I played aro
 
 In the following, I am showing the area that was searched by the sliding windows. In a bolder frame, the size of the window can be seen (which, due to the overlap, might be not that obvious)
 ###### Sliding Windows Search 64x64, 80% Overlap
-[image_windows64]: ./Writeup/Image_Processing/Hog_window/windows_img64_frame0.png "Sliding Windows Search 64x64"
+
+[image_windows64]: ./Writeup/Image_Processing/Hog_window/windows_img64_frame0.png "Sliding Windows Search"
 ![alt text][image_windows64]
 
 ###### Sliding Windows Search 128x128, 80% Overlap
-[image_windows128]: ./Writeup/Image_Processing/Hog_window/windows_img128_frame0.png "Sliding Windows Search 128x128"
+
+[image_windows128]: ./Writeup/Image_Processing/Hog_window/windows_img128_frame0.png "Sliding Windows Search"
 ![alt text][image_windows128]
 
 ###### Sliding Windows Search 256x256, 80% Overlap
-[image_windows256]: ./Writeup/Image_Processing/Hog_window/windows_img256_frame0.png "Sliding Windows Search 256x256"
+
+[image_windows256]: ./Writeup/Image_Processing/Hog_window/windows_img256_frame0.png "Sliding Windows Search"
 ![alt text][image_windows256]
 
 ### Extracting features from image only once
