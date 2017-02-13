@@ -198,15 +198,18 @@ Specifying a window size is done indirectly. Why so? The reason is that features
 The `finding_cars` function adds up all windows in which a positive classification occured. That leads to a heatmap, where the hot parts are the areas in which a car is assumed to be.
 
 ###### Positive Windows from 64x64 search
-[image_pos_windows64]: ./Writeup/Image_Processing/pos_windowsALL_img64_frame14.png "Positive Windows Search64x64"
+
+[image_pos_windows64]: Writeup/Image_Processing/pos_windowsALL_img64_frame14.png "Positive Windows Search64x64"
 ![alt text][image_pos_windows64]
 
 ###### Positive Windows from 128x128 search
-[image_pos_windows128]: ./Writeup/Image_Processing/pos_windowsALL_img128_frame14.png "Positive Windows Search128x128"
+
+[image_pos_windows128]: Writeup/Image_Processing/pos_windowsALL_img128_frame14.png "Positive Windows Search128x128"
 ![alt text][image_pos_windows128]
 
 ###### Heatmap from combined positives windows
-[image_heatmap]: ./Writeup/Image_Processing/heatmap_current_frame14.png "Heatmap"
+
+[image_heatmap]: Writeup/Image_Processing/heatmap_current_frame14.png "Heatmap"
 ![alt text][image_heatmap]
 
 #### 2. Show some examples of test images to demonstrate how your pipeline is working.  What did you do to optimize the performance of your classifier?
