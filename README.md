@@ -204,8 +204,8 @@ The `finding_cars` function adds up all windows in which a positive classificati
 
 ###### Positive Windows from 128x128 search
 
-[image_pos_windows128]: Writeup/Image_Processing/pos_windowsALL_img128_frame14.png "Positive Windows Search128x128"
-![alt text][image_pos_windows128]
+[image_pos_win128]: Writeup/Image_Processing/pos_windowsALL_img128_frame14.png "Positive Windows Search128x128"
+![alt text][image_pos_win128]
 
 ###### Heatmap from combined positives windows
 
