@@ -161,17 +161,17 @@ Certainly, only one window size does not prove to be sufficient, so I played aro
 In the following, I am showing the area that was searched by the sliding windows. In a bolder frame, the size of the window can be seen (which, due to the overlap, might be not that obvious)
 ##### Sliding Windows Search 64x64, 80% Overlap
 
-[image_windows64]: ./Writeup/Image_Processing/windows_img64_frame0.png "Sliding Windows Search"
+[image_windows64]: ./Writeup/Image_processing/windows_img64_frame0.png "Sliding Windows Search"
 ![alt text][image_windows64]
 
 ###### Sliding Windows Search 128x128, 80% Overlap
 
-[image_windows128]: ./Writeup/Image_Processing/windows_img128_frame0.png "Sliding Windows Search"
+[image_windows128]: ./Writeup/Image_processing/windows_img128_frame0.png "Sliding Windows Search"
 ![alt text][image_windows128]
 
 ###### Sliding Windows Search 256x256, 80% Overlap
 
-[image_windows256]: ./Writeup/Image_Processing/windows_img256_frame0.png "Sliding Windows Search"
+[image_windows256]: ./Writeup/Image_processing/windows_img256_frame0.png "Sliding Windows Search"
 ![alt text][image_windows256]
 
 ### Extracting features from image only once
@@ -198,17 +198,17 @@ The `finding_cars` function adds up all windows in which a positive classificati
 
 ###### Positive Windows from 64x64 search
 
-[image_pos_windows64]: Writeup/Image_Processing/pos_windowsALL_img64_frame14.png "Positive Windows Search64x64"
+[image_pos_windows64]: ./Writeup/Image_processing/pos_windowsALL_img64_frame14.png "Positive Windows Search64x64"
 ![alt text][image_pos_windows64]
 
 ###### Positive Windows from 128x128 search
 
-[image_pos_win128]: Writeup/Image_Processing/pos_windowsALL_img128_frame14.png "Positive Windows Search128x128"
+[image_pos_win128]: ./Writeup/Image_processing/pos_windowsALL_img128_frame14.png "Positive Windows Search128x128"
 ![alt text][image_pos_win128]
 
 ###### Heatmap from combined positives windows
 
-[image_heatmap]: Writeup/Image_Processing/heatmap_current_frame14.png "Heatmap"
+[image_heatmap]: ./Writeup/Image_processing/heatmap_current_frame14.png "Heatmap"
 ![alt text][image_heatmap]
 
 #### 2. Show some examples of test images to demonstrate how your pipeline is working.  What did you do to optimize the performance of your classifier?
