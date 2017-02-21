@@ -204,7 +204,7 @@ The `finding_cars` function adds up all windows in which a positive classificati
 ###### Positive Windows from 128x128 search
 
 [image_pos_win128]: Writeup/Image_Processing/pos_windowsALL_img128_frame14.png "Positive Windows Search128x128"
-![alt text][image_pos_windows128]
+![alt text][image_pos_win128]
 
 ###### Heatmap from combined positives windows
 
@@ -262,30 +262,37 @@ If none of those is true, a new car instance is created. Only after a series of 
 
 Here's an example result showing the heatmap from a series of frames of video, the result of `scipy.ndimage.measurements.label()` and the bounding boxes then overlaid on the last frame of video:
 
-[image_poswin64_9]: ./Writeup/Final_pipeline/pos_windowsALL_img64_frame9.png "Pipeline"
-[image_poswin64_10]: ./Writeup/Final_pipeline/pos_windowsALL_img64_frame10.png "Pipeline"
-[image_poswin64_11]: ./Writeup/Final_pipeline/pos_windowsALL_img64_frame11.png "Pipeline"
-[image_poswin64_12]: ./Writeup/Final_pipeline/pos_windowsALL_img64_frame12.png "Pipeline"
-[image_poswin64_13]: ./Writeup/Final_pipeline/pos_windowsALL_img64_frame13.png "Pipeline"
-[image_poswin64_14]: ./Writeup/Final_pipeline/pos_windowsALL_img64_frame14.png "Pipeline"
+[image_pipeline_9]: ./Writeup/Final_pipeline/pipeline_frame9.png "Pipeline Frame 9"
 
-[image_heatmap_9]: ./Writeup/Final_pipeline/heatmap_average_frame9.png "Pipeline"
-[image_heatmap_10]: ./Writeup/Final_pipeline/heatmap_average_frame10.png "Pipeline"
-[image_heatmap_11]: ./Writeup/Final_pipeline/heatmap_average_frame11.png "Pipeline"
-[image_heatmap_12]: ./Writeup/Final_pipeline/heatmap_average_frame12.png "Pipeline"
-[image_heatmap_13]: ./Writeup/Final_pipeline/heatmap_average_frame13.png "Pipeline"
-[image_heatmap_14]: ./Writeup/Final_pipeline/heatmap_average_frame14.png "Pipeline"
+[image_pipeline_10]: ./Writeup/Final_pipeline/pipeline_frame10.png "Pipeline Frame 10"
+
+[image_pipeline_11]: ./Writeup/Final_pipeline/pipeline_frame11.png "Pipeline Frame 11"
+
+[image_pipeline_12]: ./Writeup/Final_pipeline/pipeline_frame12.png "Pipeline Frame 12"
+
+[image_pipeline_13]: ./Writeup/Final_pipeline/pipeline_frame13.png "Pipeline Frame 13"
+
+[image_pipeline_14]: ./Writeup/Final_pipeline/pipeline_frame14.png "Pipeline Frame 14"
 
 ###### Here are six frames and their corresponding heatmaps:
 
-Positive Windows with 64x64 search  |  Averaged Heatmap
---|--
-Frame 9 ![alt text][image_poswin64_9]  |  Frame 9 ![alt text][image_heatmap_9]
-Frame 10 ![alt text][image_poswin64_10] | Frame 10 ![alt text][image_heatmap_10]
-Frame 11 ![alt text][image_poswin64_11] | Frame 11 ![alt text][image_heatmap_11]
-Frame 12 ![alt text][image_poswin64_12]  | Frame 12 ![alt text][image_heatmap_12]
-Frame 13 ![alt text][image_poswin64_13]  | Frame 13 ![alt text][image_heatmap_13]
-Frame 14![alt text][image_poswin64_14]  | Frame 14 ![alt text][image_heatmap_14]
+Frame 9
+![alt text][image_pipeline_9]
+
+Frame 10
+![alt text][image_pipeline_10]
+
+Frame 11
+![alt text][image_pipeline_11]
+
+Frame 12
+![alt text][image_pipeline_12]
+
+Frame 13
+![alt text][image_pipeline_13]
+
+Frame 14
+![alt text][image_pipeline_14]
 
 ###### Here is the output of `scipy.ndimage.measurements.label()` on the integrated heatmap from all six frames:
 [image_label_14]: ./Writeup/Final_pipeline/labelling_frame14.png "Pipeline"
